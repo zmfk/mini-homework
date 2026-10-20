@@ -32,13 +32,16 @@
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                导入学生名单
+                导入名单
             </h3>
             <form method="POST" class="space-y-3">
                 <input type="hidden" name="batch_import" value="1">
                 <div>
-                    <label class="block text-xs text-gray-500 mb-1">粘贴名单（格式：学号,姓名 或 学号 姓名，每行一个）</label>
-                    <textarea name="student_data" rows="5" required placeholder="2023001,张三&#10;2023002 李四" 
+                    <label class="block text-xs text-gray-500 mb-1">
+                        格式：<code>学号,姓名</code> (默认学生)<br>
+                        或 <code>学号,姓名,admin</code> (学生兼任管理员)
+                    </label>
+                    <textarea name="student_data" rows="5" required placeholder="2023001,张三&#10;2023002,李四,admin&#10;T001,王老师,teacher" 
                               class="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none bg-gray-50 focus:bg-white text-sm"></textarea>
                 </div>
                 <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-xl hover:bg-green-700 active:scale-[0.98] transition-all shadow-md shadow-green-500/20 text-sm">
@@ -47,7 +50,7 @@
             </form>
         </div>
 
-        <!-- 密码重置卡片 -->
+        <!-- 用户管理卡片 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>

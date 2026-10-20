@@ -16,11 +16,24 @@
     <nav class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
             <div class="flex items-center space-x-3">
-                <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">H</div>
-                <span class="text-xl font-bold text-gray-900 tracking-tight">Homework System</span>
+                <a href="/" class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">H</div>
+                    <span class="text-xl font-bold text-gray-900 tracking-tight">Homework System</span>
+                </a>
             </div>
+            
             {% if current_user.is_authenticated %}
             <div class="flex items-center space-x-6">
+                <!-- 导航栏：根据角色显示入口 -->
+                {% if current_user.role == 'admin' %}
+                    <a href="/admin" class="text-sm font-medium text-gray-600 hover:text-blue-600">管理后台</a>
+                    <a href="/student" class="text-sm font-medium text-gray-600 hover:text-blue-600">交作业</a>
+                {% elif current_user.role == 'teacher' %}
+                    <a href="/teacher" class="text-sm font-medium text-gray-600 hover:text-blue-600">批改中心</a>
+                {% else %}
+                    <a href="/student" class="text-sm font-medium text-gray-600 hover:text-blue-600">我的作业</a>
+                {% endif %}
+
                 <div class="flex items-center space-x-2">
                     <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-600 border border-blue-200">
                         {{ current_user.name[0] }}

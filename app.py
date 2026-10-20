@@ -26,11 +26,14 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+# ==========================================
+# 数据库模型
+# ==========================================
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), nullable=False)
+    role = db.Column(db.String(20), nullable=False) # 'admin', 'teacher', 'student'
     name = db.Column(db.String(50), nullable=False)
 
 class Assignment(db.Model):
@@ -51,6 +54,9 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# ==========================================
+# 路由与业务逻辑
+# ==========================================
 @app.route('/')
 def index():
     if not current_user.is_authenticated:
@@ -76,9 +82,8 @@ def logout():
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
-    if current_user.role != 'admin': return "无权限访问", 403
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
-    # 创建作业
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
@@ -88,7 +93,6 @@ def admin():
             db.session.commit()
             flash('作业创建成功！', 'success')
             
-    # 批量导入学生（默认密码改为学号）
     if request.method == 'POST' and 'batch_import' in request.form:
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
@@ -98,19 +102,23 @@ def admin():
             if len(parts) >= 2:
                 username = parts[0].strip()
                 name = parts[1].strip()
+                # 检查第三个参数是否指定了角色
+                role = 'student'
+                if len(parts) >= 3 and parts[2].strip().lower() in ['admin', 'teacher']:
+                    role = parts[2].strip().lower()
+
                 if not User.query.filter_by(username=username).first():
                     new_user = User(
                         username=username,
-                        password_hash=generate_password_hash(username), # 初始密码改为学号
-                        role='student',
+                        password_hash=generate_password_hash(username),
+                        role=role,
                         name=name
                     )
                     db.session.add(new_user)
                     count += 1
         db.session.commit()
-        flash(f'成功导入 {count} 名学生！初始密码均为其学号', 'success')
+        flash(f'成功导入 {count} 名用户！初始密码均为其学号', 'success')
 
-    # 重置密码
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
         if user:
@@ -120,7 +128,9 @@ def admin():
 
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     users = User.query.order_by(User.id.asc()).all()
-    all_students = User.query.filter_by(role='student').all()
+    
+    # 统计名单：包含普通学生(student)和学生管理员(admin)
+    all_students = User.query.filter(User.role.in_(['student', 'admin'])).all()
     
     stats = {}
     report = {}
@@ -133,12 +143,12 @@ def admin():
 
     return render_template('admin.html', users=users, assignments=assignments, stats=stats, report=report, now=datetime.now())
 
-# 新增：删除用户路由
 @app.route('/admin/delete_user/<int:user_id>')
 @login_required
 def delete_user(user_id):
-    if current_user.role != 'admin': return "无权限访问", 403
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     user = User.query.get(user_id)
+    # 保护超级管理员
     if user and user.username != 'admin':
         db.session.delete(user)
         db.session.commit()
@@ -148,7 +158,7 @@ def delete_user(user_id):
 @app.route('/admin/delete_assignment/<int:id>')
 @login_required
 def delete_assignment(id):
-    if current_user.role != 'admin': return "无权限访问", 403
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     a = Assignment.query.get(id)
     if a:
         for sub in Submission.query.filter_by(assignment_id=id).all():
@@ -163,7 +173,7 @@ def delete_assignment(id):
 @app.route('/admin/toggle_assignment/<int:id>')
 @login_required
 def toggle_assignment(id):
-    if current_user.role != 'admin': return "无权限访问", 403
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     a = Assignment.query.get(id)
     if a:
         a.is_active = not a.is_active
@@ -190,7 +200,10 @@ def teacher():
     if current_user.role != 'teacher': return "无权限访问", 403
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
-    all_students = User.query.filter_by(role='student').all()
+    
+    # 老师看名单也是看学生和admin
+    all_students = User.query.filter(User.role.in_(['student', 'admin'])).all()
+    
     report = {}
     for a in assignments:
         sub_list = [s for s in submissions if s.assignment_id == a.id]
@@ -199,10 +212,14 @@ def teacher():
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
     return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now())
 
+# === 学生面板：允许 student 和 admin 进入，老师不能进 ===
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
 def student():
-    if current_user.role != 'student': return "无权限访问", 403
+    if current_user.role not in ['student', 'admin']: 
+        flash('老师不需要交作业哦！', 'error')
+        return redirect(url_for('teacher'))
+        
     if request.method == 'POST':
         assignment_id = request.form.get('assignment_id')
         file = request.files.get('file')
@@ -239,7 +256,8 @@ def student():
 @app.route('/student/delete/<int:assignment_id>')
 @login_required
 def student_delete(assignment_id):
-    if current_user.role != 'student': return "无权限访问", 403
+    if current_user.role not in ['student', 'admin']: 
+        return "无权限访问", 403
     sub = Submission.query.filter_by(assignment_id=assignment_id, student_id=current_user.username).first()
     if sub:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
@@ -267,7 +285,7 @@ def download_zip(assignment_id):
 
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        students = User.query.filter_by(role='student').all()
+        students = User.query.filter(User.role.in_(['student', 'admin'])).all()
         sub_ids = [s.student_id for s in subs]
         not_sub = [f"{s.username}-{s.name}" for s in students if s.username not in sub_ids]
         list_content = f"【{assignment.title}】\n\n已交名单({len(subs)}人):\n" + "\n".join([f"{s.student_id}-{s.student_name}" for s in subs])
@@ -285,7 +303,7 @@ def download_zip(assignment_id):
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='admin').first():
-        db.session.add(User(username='admin', password_hash=generate_password_hash('admin123'), role='admin', name='管理员'))
+        db.session.add(User(username='admin', password_hash=generate_password_hash('admin123'), role='admin', name='超级管理员'))
         db.session.commit()
 
 if __name__ == '__main__':
