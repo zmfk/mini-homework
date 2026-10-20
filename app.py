@@ -88,29 +88,27 @@ def admin():
             db.session.commit()
             flash('作业创建成功！', 'success')
             
-    # 批量导入学生
+    # 批量导入学生（默认密码改为学号）
     if request.method == 'POST' and 'batch_import' in request.form:
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
         count = 0
         for line in lines:
-            # 支持逗号或空格分隔（如：2023001,张三 或 2023001 张三）
             parts = line.replace(',', ' ').replace('，', ' ').split()
             if len(parts) >= 2:
                 username = parts[0].strip()
                 name = parts[1].strip()
-                # 检查学号是否已存在
                 if not User.query.filter_by(username=username).first():
                     new_user = User(
                         username=username,
-                        password_hash=generate_password_hash('123456'), # 初始密码统一为 123456
+                        password_hash=generate_password_hash(username), # 初始密码改为学号
                         role='student',
                         name=name
                     )
                     db.session.add(new_user)
                     count += 1
         db.session.commit()
-        flash(f'成功导入 {count} 名学生！初始密码均为 123456', 'success')
+        flash(f'成功导入 {count} 名学生！初始密码均为其学号', 'success')
 
     # 重置密码
     if request.method == 'POST' and 'change_password' in request.form:
@@ -141,7 +139,6 @@ def admin():
 def delete_user(user_id):
     if current_user.role != 'admin': return "无权限访问", 403
     user = User.query.get(user_id)
-    # 保护主管理员账号不被误删
     if user and user.username != 'admin':
         db.session.delete(user)
         db.session.commit()
