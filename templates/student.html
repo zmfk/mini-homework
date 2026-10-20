@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-900 mb-8 flex items-center">
+        <svg class="w-6 h-6 mr-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+        我的作业列表
+    </h2>
+    
+    <div class="space-y-5">
+        {% for a in assignments %}
+        {% set is_expired = now > a.deadline and not a.is_active %}
+        {% set sub = my_subs.get(a.id) %}
+        
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-shadow hover:shadow-md">
+            <div class="flex-grow">
+                <div class="flex items-center space-x-3 mb-2">
+                    <h3 class="text-xl font-bold text-gray-900">{{ a.title }}</h3>
+                    {% if sub %}
+                        <span class="px-2.5 py-1 rounded-md text-xs font-bold bg-green-100 text-green-700 border border-green-200">已提交</span>
+                    {% elif is_expired %}
+                        <span class="px-2.5 py-1 rounded-md text-xs font-bold bg-red-100 text-red-700 border border-red-200">已截止</span>
+                    {% else %}
+                        <span class="px-2.5 py-1 rounded-md text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200">待提交</span>
+                    {% endif %}
+                </div>
+                <p class="text-sm text-gray-500 flex items-center mt-2">
+                    <svg class="w-4 h-4 mr-1.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    截止时间：{{ a.deadline.strftime('%Y-%m-%d %H:%M') }}
+                </p>
+                
+                {% if sub %}
+                <div class="mt-4 flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-200 max-w-md">
+                    <a href="/download/{{ sub.file_name }}" class="text-sm text-gray-800 hover:text-blue-600 hover:underline flex items-center font-medium truncate pr-4">
+                        <svg class="w-4 h-4 mr-2 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span class="truncate">{{ sub.file_name }}</span>
+                    </a>
+                    {% if not is_expired %}
+                    <a href="/student/delete/{{ a.id }}" onclick="return confirm('确定撤回重传吗？原文件将被删除。')" class="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1.5 rounded-md border border-red-100 whitespace-nowrap transition-colors">撤回重传</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 上传区域 -->
+            <div class="w-full md:w-80 flex-shrink-0">
+                {% if not is_expired and not sub %}
+                <form method="POST" enctype="multipart/form-data" class="flex flex-col space-y-3">
+                    <input type="hidden" name="assignment_id" value="{{ a.id }}">
+                    <div class="relative border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition-colors group cursor-pointer text-center p-4">
+                        <!-- 新增了 id 和 onchange 事件 -->
+                        <input type="file" name="file" accept=".pdf,.doc,.docx" required 
+                               class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                               id="file-input-{{ a.id }}" 
+                               onchange="updateFileName(this, 'file-text-{{ a.id }}')">
+                        <div class="pointer-events-none flex flex-col items-center justify-center">
+                            <svg class="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <!-- 新增了 id 用于 JS 修改文字 -->
+                            <span id="file-text-{{ a.id }}" class="text-xs text-gray-500 group-hover:text-blue-600 font-medium line-clamp-2 px-2 break-all">
+                                点击选择文件 (PDF/Word)
+                            </span>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 active:scale-[0.98] transition-all shadow-md shadow-blue-500/20">确认提交</button>
+                </form>
+                {% elif is_expired and not sub %}
+                <div class="text-center p-4 bg-gray-100 rounded-xl border border-gray-200 text-gray-400 text-sm font-medium flex flex-col items-center justify-center h-full">
+                    <svg class="w-8 h-8 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    提交通道已关闭
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center py-24 bg-white rounded-2xl border border-dashed border-gray-300 shadow-sm">
+            <svg class="w-16 h-16 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+            <p class="text-gray-500 font-medium text-lg">当前没有需要提交的作业</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 新增的 JavaScript 代码，用于实时显示选中的文件名 -->
+<script>
+    function updateFileName(input, textId) {
+        if (input.files && input.files.length > 0) {
+            const fileName = input.files[0].name;
+            const textElement = document.getElementById(textId);
+            if (textElement) {
+                textElement.textContent = "已选择: " + fileName;
+                // 改变文字颜色提示用户已选择成功
+                textElement.classList.remove('text-gray-500', 'text-xs');
+                textElement.classList.add('text-blue-600', 'text-sm', 'font-bold');
+            }
+        }
+    }
+</script>
+{% endblock %}

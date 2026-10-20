@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900">老师面板 - 批改中心</h2>
+            <p class="text-sm text-gray-500 mt-1">在此查看学生提交情况并统一下载文件</p>
+        </div>
+        <div class="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
+            <span class="text-sm text-gray-600">共布置了 <strong class="text-blue-600 font-bold">{{ assignments|length }}</strong> 次作业</span>
+        </div>
+    </div>
+
+    <div class="space-y-6">
+        {% for a in assignments %}
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-shadow hover:shadow-md">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">{{ a.title }}</h3>
+                    <p class="text-sm text-gray-500 mt-1 flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        截止时间：{{ a.deadline.strftime('%Y-%m-%d %H:%M') }} 
+                        {% if a.is_active %}<span class="ml-3 px-2 py-0.5 text-xs font-bold bg-green-100 text-green-700 rounded-full border border-green-200">强制开放</span>{% endif %}
+                    </p>
+                </div>
+                <a href="/download_zip/{{ a.id }}" class="bg-gray-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-black transition-colors flex items-center shadow-md shadow-gray-900/10">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    打包下载作业与名单
+                </a>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 text-sm">
+                <!-- 已交名单 -->
+                <div class="p-6 md:border-r border-gray-100 border-b md:border-b-0">
+                    <strong class="text-green-700 block mb-4 flex items-center text-base">
+                        已交学生 ({{ report[a.id].submitted|length }}人)
+                    </strong>
+                    <ul class="space-y-2">
+                        {% for sub in report[a.id].submitted %}
+                        <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100 group">
+                            <div class="flex items-center">
+                                <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-2">{{ sub.student_name[0] }}</div>
+                                <span class="font-medium text-gray-800">{{ sub.student_id }} - {{ sub.student_name }}</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
+                                <!-- 新增：单独删除按钮 -->
+                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？删除后该学生可重新上传。')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
+                            </div>
+                        </li>
+                        {% else %}
+                        <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                
+                <!-- 未交名单 -->
+                <div class="p-6 bg-gray-50/30">
+                    <strong class="text-red-600 block mb-4 flex items-center text-base">
+                        未交学生 ({{ report[a.id].not_submitted|length }}人)
+                    </strong>
+                    <ul class="space-y-2">
+                        {% for stu in report[a.id].not_submitted %}
+                        <li class="flex items-center bg-white p-2.5 rounded-lg border border-red-100">
+                            <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2">{{ stu.name[0] }}</div>
+                            <span class="text-gray-700">{{ stu.username }} - {{ stu.name }}</span>
+                        </li>
+                        {% else %}
+                        <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-300">
+            <p class="text-gray-500">暂无布置的作业</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

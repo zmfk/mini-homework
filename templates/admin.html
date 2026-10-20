@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    
+    <!-- 左侧：操作区 -->
+    <div class="lg:col-span-1 space-y-6">
+        <!-- 发布作业卡片 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                发布新作业
+            </h3>
+            <form method="POST" class="space-y-4">
+                <input type="hidden" name="create_assignment" value="1">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">作业名称</label>
+                    <input type="text" name="title" placeholder="例如：第一次计算机组成原理作业" required 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none bg-gray-50 focus:bg-white">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">截止时间</label>
+                    <input type="datetime-local" name="deadline" id="deadline-input" required 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none bg-gray-50 focus:bg-white">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white font-medium py-2.5 rounded-xl hover:bg-blue-700 active:scale-[0.98] transition-all shadow-md shadow-blue-500/20">
+                    立即发布
+                </button>
+            </form>
+        </div>
+
+        <!-- 密码重置卡片 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                重置用户密码
+            </h3>
+            <div class="max-h-64 overflow-y-auto pr-2 space-y-2">
+                {% for user in users %}
+                <div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
+                    <div class="text-sm">
+                        <p class="font-medium text-gray-900">{{ user.name }}</p>
+                        <p class="text-xs text-gray-500">{{ user.username }} ({{ user.role }})</p>
+                    </div>
+                    <form method="POST" class="flex items-center space-x-2">
+                        <input type="hidden" name="change_password" value="1">
+                        <input type="hidden" name="user_id" value="{{ user.id }}">
+                        <input type="text" name="new_password" placeholder="新密码" required 
+                               class="w-24 px-2 py-1 text-xs border border-gray-300 rounded focus:border-blue-500 outline-none">
+                        <button type="submit" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded border border-gray-200 transition-colors">重置</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：作业列表与详细状态 -->
+    <div class="lg:col-span-2 space-y-6">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-xl font-bold text-gray-900">作业管理看板</h2>
+            <span class="text-sm font-medium bg-blue-100 text-blue-700 px-3 py-1 rounded-full">共 {{ assignments|length }} 项</span>
+        </div>
+
+        {% for a in assignments %}
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden group hover:shadow-md transition-shadow">
+            <!-- 卡片头部 -->
+            <div class="p-6 border-b border-gray-100">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{{ a.title }}</h3>
+                        <div class="flex items-center space-x-4 mt-2 text-sm text-gray-500">
+                            <span class="flex items-center">
+                                <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                {{ a.deadline.strftime('%Y-%m-%d %H:%M') }}
+                            </span>
+                            <span class="flex items-center">
+                                <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                已交 {{ stats[a.id].total }} 人
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- 状态与操作按钮 -->
+                    <div class="flex flex-col items-end space-y-3">
+                        {% if a.is_active %}
+                            <span class="px-3 py-1 text-xs font-bold bg-green-100 text-green-700 rounded-full border border-green-200">强制开放中</span>
+                        {% elif now > a.deadline %}
+                            <span class="px-3 py-1 text-xs font-bold bg-red-100 text-red-700 rounded-full border border-red-200">已截止</span>
+                        {% else %}
+                            <span class="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-700 rounded-full border border-blue-200">进行中</span>
+                        {% endif %}
+                        
+                        <div class="flex space-x-3 text-sm font-medium bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                            <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center">
+                                打包下载
+                            </a>
+                            <span class="text-gray-300">|</span>
+                            <a href="/admin/toggle_assignment/{{ a.id }}" class="text-orange-500 hover:text-orange-700 hover:underline">
+                                {% if a.is_active %}关闭{% else %}唤出{% endif %}
+                            </a>
+                            <span class="text-gray-300">|</span>
+                            <!-- 删除整个作业 -->
+                            <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('警告：确定删除整个作业吗？所有学生交的文件都会被删除！')" class="text-red-500 hover:text-red-700 hover:underline">删除作业</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 管理员查看已交/未交名单（已改为和老师端相同的列表样式） -->
+            <div class="bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <!-- 已交名单 -->
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                    <strong class="text-green-600 block mb-3 flex items-center border-b pb-2">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        已交名单 ({{ report[a.id].submitted|length }}人)
+                    </strong>
+                    <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {% for sub in report[a.id].submitted %}
+                        <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100">
+                            <div class="flex items-center">
+                                <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-2">{{ sub.student_name[0] }}</div>
+                                <span class="font-medium text-gray-800">{{ sub.student_id }} - {{ sub.student_name }}</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
+                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？删除后该学生可重新上传。')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
+                            </div>
+                        </li>
+                        {% else %}
+                        <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                
+                <!-- 未交名单 -->
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                    <strong class="text-red-500 block mb-3 flex items-center border-b pb-2">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        未交名单 ({{ report[a.id].not_submitted|length }}人)
+                    </strong>
+                    <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {% for stu in report[a.id].not_submitted %}
+                        <li class="flex items-center bg-red-50/50 p-2.5 rounded-lg border border-red-100">
+                            <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2">{{ stu.name[0] }}</div>
+                            <span class="text-gray-800">{{ stu.username }} - {{ stu.name }}</span>
+                        </li>
+                        {% else %}
+                        <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center py-24 bg-white rounded-2xl border border-dashed border-gray-300">
+            <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+            <p class="text-gray-500 font-medium">暂无布置的作业</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 自动设置截止时间为今天的 23:59 -->
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const deadlineInput = document.getElementById("deadline-input");
+        if (deadlineInput && !deadlineInput.value) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            
+            // 格式化为 YYYY-MM-DDTHH:mm (即当天的 23:59)
+            const defaultTime = `${year}-${month}-${day}T23:59`;
+            deadlineInput.value = defaultTime;
+        }
+    });
+</script>
+{% endblock %}

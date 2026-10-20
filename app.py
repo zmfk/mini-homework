@@ -1,0 +1,272 @@
+import os
+import io
+import zipfile
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your-secret-key-123'
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(DATA_DIR, 'database.db')
+app.config['UPLOAD_FOLDER'] = os.path.join(DATA_DIR, 'uploads')
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024 # 限制最大上传 20MB
+
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+
+# ==========================================
+# 数据库模型
+# ==========================================
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    role = db.Column(db.String(20), nullable=False) # 'admin', 'teacher', 'student'
+    name = db.Column(db.String(50), nullable=False)
+
+class Assignment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    deadline = db.Column(db.DateTime, nullable=False)
+    is_active = db.Column(db.Boolean, default=False)
+
+class Submission(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.id'), nullable=False)
+    student_id = db.Column(db.String(50), nullable=False)
+    student_name = db.Column(db.String(50), nullable=False)
+    file_name = db.Column(db.String(150), nullable=False) # 稍微加长一点防止文件名过长
+    submit_time = db.Column(db.DateTime, server_default=db.func.now())
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+# ==========================================
+# 路由与业务逻辑
+# ==========================================
+@app.route('/')
+def index():
+    if not current_user.is_authenticated:
+        return redirect(url_for('login'))
+    return redirect(url_for(f'{current_user.role}'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = User.query.filter_by(username=request.form.get('username')).first()
+        if user and check_password_hash(user.password_hash, request.form.get('password')):
+            login_user(user)
+            return redirect(url_for('index'))
+        flash('学号或密码错误', 'error')
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# === 管理员面板 ===
+@app.route('/admin', methods=['GET', 'POST'])
+@login_required
+def admin():
+    if current_user.role != 'admin': return "无权限访问", 403
+    
+    if request.method == 'POST' and 'create_assignment' in request.form:
+        title = request.form.get('title')
+        deadline_str = request.form.get('deadline')
+        if title and deadline_str:
+            deadline = datetime.strptime(deadline_str, '%Y-%m-%dT%H:%M')
+            db.session.add(Assignment(title=title, deadline=deadline))
+            db.session.commit()
+            flash('作业创建成功！', 'success')
+            
+    if request.method == 'POST' and 'change_password' in request.form:
+        user = User.query.get(request.form.get('user_id'))
+        if user:
+            user.password_hash = generate_password_hash(request.form.get('new_password'))
+            db.session.commit()
+            flash('密码重置成功', 'success')
+
+    assignments = Assignment.query.order_by(Assignment.id.desc()).all()
+    users = User.query.all()
+    all_students = User.query.filter_by(role='student').all()
+    
+    stats = {}
+    report = {}
+    for a in assignments:
+        subs = Submission.query.filter_by(assignment_id=a.id).all()
+        submitted_ids = [s.student_id for s in subs]
+        not_submitted = [s for s in all_students if s.username not in submitted_ids]
+        stats[a.id] = {'total': len(subs), 'files': [s.file_name for s in subs]}
+        report[a.id] = {'submitted': subs, 'not_submitted': not_submitted}
+
+    return render_template('admin.html', users=users, assignments=assignments, stats=stats, report=report, now=datetime.now())
+
+@app.route('/admin/delete_assignment/<int:id>')
+@login_required
+def delete_assignment(id):
+    if current_user.role != 'admin': return "无权限访问", 403
+    a = Assignment.query.get(id)
+    if a:
+        for sub in Submission.query.filter_by(assignment_id=id).all():
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+            if os.path.exists(filepath): os.remove(filepath)
+            db.session.delete(sub)
+        db.session.delete(a)
+        db.session.commit()
+        flash('作业及所有提交文件已彻底删除', 'success')
+    return redirect(url_for('admin'))
+
+@app.route('/admin/toggle_assignment/<int:id>')
+@login_required
+def toggle_assignment(id):
+    if current_user.role != 'admin': return "无权限访问", 403
+    a = Assignment.query.get(id)
+    if a:
+        a.is_active = not a.is_active
+        db.session.commit()
+        flash(f'作业 [{a.title}] 状态已切换', 'success')
+    return redirect(url_for('admin'))
+
+# === 老师面板 ===
+@app.route('/teacher')
+@login_required
+def teacher():
+    if current_user.role != 'teacher': return "无权限访问", 403
+    assignments = Assignment.query.order_by(Assignment.id.desc()).all()
+    submissions = Submission.query.all()
+    
+    all_students = User.query.filter_by(role='student').all()
+    report = {}
+    for a in assignments:
+        sub_list = [s for s in submissions if s.assignment_id == a.id]
+        submitted_ids = [s.student_id for s in sub_list]
+        not_submitted = [s for s in all_students if s.username not in submitted_ids]
+        report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
+
+    return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now())
+
+# === 学生面板 ===
+@app.route('/student', methods=['GET', 'POST'])
+@login_required
+def student():
+    if current_user.role != 'student': return "无权限访问", 403
+    
+    if request.method == 'POST':
+        assignment_id = request.form.get('assignment_id')
+        file = request.files.get('file')
+        assignment = Assignment.query.get(assignment_id)
+        
+        if not assignment or (datetime.now() > assignment.deadline and not assignment.is_active):
+            flash('该作业已截止提交！', 'error')
+            return redirect(url_for('student'))
+
+        if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
+            # 1. 获取合法的文件后缀 (比如 .pdf, .doc)
+            ext = os.path.splitext(file.filename)[1].lower()
+            
+            # 2. 清理作业名称中的非法字符 (Windows 文件名中不能包含 \/:*?"<>|)
+            safe_title = assignment.title
+            for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
+                safe_title = safe_title.replace(char, '')
+            
+            # 3. 按照格式拼接：学号_姓名_作业名.后缀
+            filename = f"{current_user.username}_{current_user.name}_{safe_title}{ext}"
+            
+            # 保存文件
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            
+            # 如果之前交过，先删掉旧的记录和文件
+            old_sub = Submission.query.filter_by(assignment_id=assignment_id, student_id=current_user.username).first()
+            if old_sub:
+                old_path = os.path.join(app.config['UPLOAD_FOLDER'], old_sub.file_name)
+                if os.path.exists(old_path): os.remove(old_path)
+                db.session.delete(old_sub)
+            
+            db.session.add(Submission(assignment_id=assignment_id, student_id=current_user.username, student_name=current_user.name, file_name=filename))
+            db.session.commit()
+            flash('作业提交成功！', 'success')
+        else:
+            flash('只支持上传 PDF, DOC, DOCX 格式！', 'error')
+            
+    assignments = Assignment.query.order_by(Assignment.id.desc()).all()
+    my_subs = {s.assignment_id: s for s in Submission.query.filter_by(student_id=current_user.username).all()}
+    return render_template('student.html', assignments=assignments, my_subs=my_subs, now=datetime.now())
+
+@app.route('/student/delete/<int:assignment_id>')
+@login_required
+def student_delete(assignment_id):
+    if current_user.role != 'student': return "无权限访问", 403
+    sub = Submission.query.filter_by(assignment_id=assignment_id, student_id=current_user.username).first()
+    if sub:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+        if os.path.exists(filepath): os.remove(filepath)
+        db.session.delete(sub)
+        db.session.commit()
+        flash('提交已撤回，你可以重新上传了。', 'success')
+    return redirect(url_for('student'))
+
+# === 公共下载功能 ===
+@app.route('/download/<filename>')
+@login_required
+def download_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
+@app.route('/download_zip/<int:assignment_id>')
+@login_required
+def download_zip(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限", 403
+    assignment = Assignment.query.get(assignment_id)
+    subs = Submission.query.filter_by(assignment_id=assignment_id).all()
+    
+    if not subs:
+        flash('该作业暂无学生提交，无法打包。', 'error')
+        return redirect(request.referrer)
+
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        students = User.query.filter_by(role='student').all()
+        sub_ids = [s.student_id for s in subs]
+        not_sub = [f"{s.username}-{s.name}" for s in students if s.username not in sub_ids]
+        list_content = f"【{assignment.title}】\n\n已交名单({len(subs)}人):\n" + "\n".join([f"{s.student_id}-{s.student_name}" for s in subs])
+        list_content += f"\n\n未交名单({len(not_sub)}人):\n" + "\n".join(not_sub)
+        zf.writestr('名单汇总.txt', list_content.encode('utf-8'))
+        
+        for sub in subs:
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+            if os.path.exists(filepath):
+                zf.write(filepath, sub.file_name)
+                
+    memory_file.seek(0)
+    return send_file(memory_file, download_name=f"{assignment.title}_打包.zip", as_attachment=True)
+
+# ==========================================
+# 初始化数据库
+# ==========================================
+with app.app_context():
+    db.create_all()
+    if not User.query.filter_by(username='admin').first():
+        db.session.add(User(username='admin', password_hash=generate_password_hash('admin123'), role='admin', name='管理员'))
+        db.session.add(User(username='T001', password_hash=generate_password_hash('123456'), role='teacher', name='张老师'))
+        db.session.add(User(username='S001', password_hash=generate_password_hash('123456'), role='student', name='李小明'))
+        db.session.add(User(username='S002', password_hash=generate_password_hash('123456'), role='student', name='王二狗'))
+        db.session.commit()
+        print("数据库初始化完成！默认管理员: admin / admin123")
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=True)

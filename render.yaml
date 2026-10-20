@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mini-homework
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
