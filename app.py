@@ -84,6 +84,7 @@ def logout():
 def admin():
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
+    # 创建作业
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
@@ -93,6 +94,7 @@ def admin():
             db.session.commit()
             flash('作业创建成功！', 'success')
             
+    # 批量导入名单
     if request.method == 'POST' and 'batch_import' in request.form:
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
@@ -124,6 +126,7 @@ def admin():
         db.session.commit()
         flash(f'成功导入 {count} 名用户！初始密码均为其学号', 'success')
 
+    # 重置密码
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
         if user:
@@ -134,7 +137,7 @@ def admin():
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     users = User.query.order_by(User.id.asc()).all()
     
-    # 核心修复：在计算未交名单时，排除默认的 'admin' 账号
+    # 统计排除默认的 admin 账号
     all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
     
     stats = {}
@@ -205,7 +208,7 @@ def teacher():
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
     
-    # 核心修复：老师看统计时，也排除默认的 'admin' 账号
+    # 老师统计同样排除 admin 账号
     all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
     
     report = {}
@@ -216,7 +219,7 @@ def teacher():
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
     return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now())
 
-# === 学生面板 ===
+# === 学生面板（包含宏防护） ===
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
 def student():
@@ -233,8 +236,24 @@ def student():
             flash('该作业已截止提交！', 'error')
             return redirect(url_for('student'))
 
-        if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
+        # 1. 强制禁用老旧的 .doc 格式，只允许 .pdf 和 .docx
+        if file and file.filename.lower().endswith(('.pdf', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
+            
+            # 2. 如果上传的是 .docx，进行极速宏检测
+            if ext == '.docx':
+                try:
+                    with zipfile.ZipFile(file.stream) as zf:
+                        if 'word/vbaProject.bin' in zf.namelist():
+                            flash('检测到文件包含恶意宏，已被拒绝提交！', 'error')
+                            return redirect(url_for('student'))
+                except Exception:
+                    flash('文件损坏或格式不正确！', 'error')
+                    return redirect(url_for('student'))
+                finally:
+                    file.stream.seek(0) 
+
+            # 3. 安全，执行保存逻辑
             safe_title = assignment.title
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
                 safe_title = safe_title.replace(char, '')
@@ -251,7 +270,7 @@ def student():
             db.session.commit()
             flash('作业提交成功！', 'success')
         else:
-            flash('只支持上传 PDF, DOC, DOCX 格式！', 'error')
+            flash('只支持上传 PDF 或 DOCX 格式！(老旧的 .doc 格式因安全原因被禁用)', 'error')
             
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     my_subs = {s.assignment_id: s for s in Submission.query.filter_by(student_id=current_user.username).all()}
@@ -289,7 +308,6 @@ def download_zip(assignment_id):
 
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # 核心修复：导出名单时，排除默认的 'admin' 账号
         students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
         sub_ids = [s.student_id for s in subs]
         not_sub = [f"{s.username}-{s.name}" for s in students if s.username not in sub_ids]
