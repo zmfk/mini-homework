@@ -38,10 +38,10 @@
                 <input type="hidden" name="batch_import" value="1">
                 <div>
                     <label class="block text-xs text-gray-500 mb-1">
-                        格式：<code>学号,姓名</code> (默认学生)<br>
-                        或 <code>学号,姓名,admin</code> (学生兼任管理员)
+                        请直接粘贴（支持 Excel 直接复制，自动跳过表头）<br>
+                        格式：<code>学号 姓名</code> 或 <code>学号 姓名 admin</code>
                     </label>
-                    <textarea name="student_data" rows="5" required placeholder="2023001,张三&#10;2023002,李四,admin&#10;T001,王老师,teacher" 
+                    <textarea name="student_data" rows="6" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;2023002&#9;李四&#9;admin&#10;T001&#9;王老师&#9;teacher" 
                               class="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none bg-gray-50 focus:bg-white text-sm"></textarea>
                 </div>
                 <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-xl hover:bg-green-700 active:scale-[0.98] transition-all shadow-md shadow-green-500/20 text-sm">

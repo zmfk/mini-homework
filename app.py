@@ -84,6 +84,7 @@ def logout():
 def admin():
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
+    # 创建作业
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
@@ -93,20 +94,31 @@ def admin():
             db.session.commit()
             flash('作业创建成功！', 'success')
             
+    # 批量导入名单
     if request.method == 'POST' and 'batch_import' in request.form:
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
         count = 0
         for line in lines:
-            parts = line.replace(',', ' ').replace('，', ' ').split()
+            line_str = line.strip()
+            # 跳过空行或包含表头的行
+            if not line_str or '学号' in line_str or '姓名' in line_str:
+                continue
+            
+            # 兼容 Tab、逗号、空格等多种分隔符
+            line_str = line_str.replace('\t', ' ').replace(',', ' ').replace('，', ' ')
+            parts = line_str.split()
+            
             if len(parts) >= 2:
                 username = parts[0].strip()
                 name = parts[1].strip()
-                # 检查第三个参数是否指定了角色
+                
+                # 检查是否有第三列（角色）
                 role = 'student'
                 if len(parts) >= 3 and parts[2].strip().lower() in ['admin', 'teacher']:
                     role = parts[2].strip().lower()
 
+                # 防止重复导入
                 if not User.query.filter_by(username=username).first():
                     new_user = User(
                         username=username,
@@ -119,6 +131,7 @@ def admin():
         db.session.commit()
         flash(f'成功导入 {count} 名用户！初始密码均为其学号', 'success')
 
+    # 重置密码
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
         if user:
@@ -129,7 +142,7 @@ def admin():
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     users = User.query.order_by(User.id.asc()).all()
     
-    # 统计名单：包含普通学生(student)和学生管理员(admin)
+    # 统计包含普通学生和学生管理员
     all_students = User.query.filter(User.role.in_(['student', 'admin'])).all()
     
     stats = {}
@@ -148,7 +161,6 @@ def admin():
 def delete_user(user_id):
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     user = User.query.get(user_id)
-    # 保护超级管理员
     if user and user.username != 'admin':
         db.session.delete(user)
         db.session.commit()
@@ -200,8 +212,6 @@ def teacher():
     if current_user.role != 'teacher': return "无权限访问", 403
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
-    
-    # 老师看名单也是看学生和admin
     all_students = User.query.filter(User.role.in_(['student', 'admin'])).all()
     
     report = {}
@@ -212,7 +222,7 @@ def teacher():
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
     return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now())
 
-# === 学生面板：允许 student 和 admin 进入，老师不能进 ===
+# === 学生面板：允许 student 和 admin 进入 ===
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
 def student():
