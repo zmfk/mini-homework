@@ -44,23 +44,23 @@
             <!-- 上传区域 -->
             <div class="w-full md:w-80 flex-shrink-0">
                 {% if not is_expired and not sub %}
-                <form method="POST" enctype="multipart/form-data" class="flex flex-col space-y-3">
+                <form method="POST" enctype="multipart/form-data" class="flex flex-col space-y-3 submit-form">
                     <input type="hidden" name="assignment_id" value="{{ a.id }}">
                     <div class="relative border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition-colors group cursor-pointer text-center p-4">
-                        <!-- 新增了 id 和 onchange 事件 -->
                         <input type="file" name="file" accept=".pdf,.doc,.docx" required 
                                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
                                id="file-input-{{ a.id }}" 
                                onchange="updateFileName(this, 'file-text-{{ a.id }}')">
                         <div class="pointer-events-none flex flex-col items-center justify-center">
                             <svg class="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                            <!-- 新增了 id 用于 JS 修改文字 -->
                             <span id="file-text-{{ a.id }}" class="text-xs text-gray-500 group-hover:text-blue-600 font-medium line-clamp-2 px-2 break-all">
                                 点击选择文件 (PDF/Word)
                             </span>
                         </div>
                     </div>
-                    <button type="submit" class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 active:scale-[0.98] transition-all shadow-md shadow-blue-500/20">确认提交</button>
+                    <button type="submit" class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 active:scale-[0.98] transition-all shadow-md shadow-blue-500/20 flex justify-center items-center">
+                        确认提交
+                    </button>
                 </form>
                 {% elif is_expired and not sub %}
                 <div class="text-center p-4 bg-gray-100 rounded-xl border border-gray-200 text-gray-400 text-sm font-medium flex flex-col items-center justify-center h-full">
@@ -79,19 +79,47 @@
     </div>
 </div>
 
-<!-- 新增的 JavaScript 代码，用于实时显示选中的文件名 -->
 <script>
+    // 1. 实时显示选中的文件名
     function updateFileName(input, textId) {
         if (input.files && input.files.length > 0) {
             const fileName = input.files[0].name;
             const textElement = document.getElementById(textId);
             if (textElement) {
                 textElement.textContent = "已选择: " + fileName;
-                // 改变文字颜色提示用户已选择成功
                 textElement.classList.remove('text-gray-500', 'text-xs');
                 textElement.classList.add('text-blue-600', 'text-sm', 'font-bold');
             }
         }
     }
+
+    // 2. 提交拦截与防关闭机制
+    let isSubmitting = false;
+
+    // 监听表单提交动作
+    document.querySelectorAll('.submit-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            isSubmitting = true; // 标记正在提交
+            
+            const btn = this.querySelector('button[type="submit"]');
+            if (btn) {
+                // 改变按钮样式：转圈动画 + 正在上传
+                btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 正在上传...';
+                btn.disabled = true; // 禁用按钮，防止重复点击
+                btn.classList.remove('hover:bg-blue-700', 'active:scale-[0.98]');
+                btn.classList.add('opacity-80', 'cursor-not-allowed');
+            }
+        });
+    });
+
+    // 监听浏览器关闭/刷新行为
+    window.addEventListener('beforeunload', function(e) {
+        if (isSubmitting) {
+            // 触发浏览器原生的确认弹窗
+            e.preventDefault();
+            e.returnValue = '文件正在上传中，关闭页面将导致提交失败！';
+            return e.returnValue;
+        }
+    });
 </script>
 {% endblock %}

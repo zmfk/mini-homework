@@ -28,11 +28,30 @@
             </form>
         </div>
 
+        <!-- 批量导入学生卡片 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                导入学生名单
+            </h3>
+            <form method="POST" class="space-y-3">
+                <input type="hidden" name="batch_import" value="1">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">粘贴名单（格式：学号,姓名 或 学号 姓名，每行一个）</label>
+                    <textarea name="student_data" rows="5" required placeholder="2023001,张三&#10;2023002 李四" 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none bg-gray-50 focus:bg-white text-sm"></textarea>
+                </div>
+                <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-xl hover:bg-green-700 active:scale-[0.98] transition-all shadow-md shadow-green-500/20 text-sm">
+                    批量导入 (默认密码123456)
+                </button>
+            </form>
+        </div>
+
         <!-- 密码重置卡片 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-                重置用户密码
+                用户管理
             </h3>
             <div class="max-h-64 overflow-y-auto pr-2 space-y-2">
                 {% for user in users %}
@@ -41,13 +60,18 @@
                         <p class="font-medium text-gray-900">{{ user.name }}</p>
                         <p class="text-xs text-gray-500">{{ user.username }} ({{ user.role }})</p>
                     </div>
-                    <form method="POST" class="flex items-center space-x-2">
-                        <input type="hidden" name="change_password" value="1">
-                        <input type="hidden" name="user_id" value="{{ user.id }}">
-                        <input type="text" name="new_password" placeholder="新密码" required 
-                               class="w-24 px-2 py-1 text-xs border border-gray-300 rounded focus:border-blue-500 outline-none">
-                        <button type="submit" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded border border-gray-200 transition-colors">重置</button>
-                    </form>
+                    <div class="flex items-center space-x-2">
+                        <form method="POST" class="flex items-center space-x-2">
+                            <input type="hidden" name="change_password" value="1">
+                            <input type="hidden" name="user_id" value="{{ user.id }}">
+                            <input type="text" name="new_password" placeholder="新密码" required 
+                                   class="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:border-blue-500 outline-none">
+                            <button type="submit" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded border border-gray-200 transition-colors">重置</button>
+                        </form>
+                        {% if user.username != 'admin' %}
+                        <a href="/admin/delete_user/{{ user.id }}" onclick="return confirm('确定删除该用户吗？')" class="text-xs text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded border border-red-200 transition-colors">删除</a>
+                        {% endif %}
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -63,7 +87,6 @@
 
         {% for a in assignments %}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden group hover:shadow-md transition-shadow">
-            <!-- 卡片头部 -->
             <div class="p-6 border-b border-gray-100">
                 <div class="flex justify-between items-start">
                     <div>
@@ -80,7 +103,6 @@
                         </div>
                     </div>
                     
-                    <!-- 状态与操作按钮 -->
                     <div class="flex flex-col items-end space-y-3">
                         {% if a.is_active %}
                             <span class="px-3 py-1 text-xs font-bold bg-green-100 text-green-700 rounded-full border border-green-200">强制开放中</span>
@@ -91,24 +113,19 @@
                         {% endif %}
                         
                         <div class="flex space-x-3 text-sm font-medium bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                            <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center">
-                                打包下载
-                            </a>
+                            <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center">打包下载</a>
                             <span class="text-gray-300">|</span>
                             <a href="/admin/toggle_assignment/{{ a.id }}" class="text-orange-500 hover:text-orange-700 hover:underline">
                                 {% if a.is_active %}关闭{% else %}唤出{% endif %}
                             </a>
                             <span class="text-gray-300">|</span>
-                            <!-- 删除整个作业 -->
-                            <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('警告：确定删除整个作业吗？所有学生交的文件都会被删除！')" class="text-red-500 hover:text-red-700 hover:underline">删除作业</a>
+                            <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('警告：确定删除整个作业吗？')" class="text-red-500 hover:text-red-700 hover:underline">删除作业</a>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 管理员查看已交/未交名单（已改为和老师端相同的列表样式） -->
             <div class="bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <!-- 已交名单 -->
                 <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                     <strong class="text-green-600 block mb-3 flex items-center border-b pb-2">
                         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -123,7 +140,7 @@
                             </div>
                             <div class="flex items-center space-x-2">
                                 <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
-                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？删除后该学生可重新上传。')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
+                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
                             </div>
                         </li>
                         {% else %}
@@ -132,7 +149,6 @@
                     </ul>
                 </div>
                 
-                <!-- 未交名单 -->
                 <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                     <strong class="text-red-500 block mb-3 flex items-center border-b pb-2">
                         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -160,7 +176,6 @@
     </div>
 </div>
 
-<!-- 自动设置截止时间为今天的 23:59 -->
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         const deadlineInput = document.getElementById("deadline-input");
@@ -169,8 +184,6 @@
             const year = now.getFullYear();
             const month = String(now.getMonth() + 1).padStart(2, '0');
             const day = String(now.getDate()).padStart(2, '0');
-            
-            // 格式化为 YYYY-MM-DDTHH:mm (即当天的 23:59)
             const defaultTime = `${year}-${month}-${day}T23:59`;
             deadlineInput.value = defaultTime;
         }
