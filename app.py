@@ -26,9 +26,6 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# ==========================================
-# 数据库模型
-# ==========================================
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -54,9 +51,6 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ==========================================
-# 路由与业务逻辑
-# ==========================================
 @app.route('/')
 def index():
     if not current_user.is_authenticated:
@@ -84,7 +78,6 @@ def logout():
 def admin():
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
-    # 创建作业
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
@@ -94,7 +87,6 @@ def admin():
             db.session.commit()
             flash('作业创建成功！', 'success')
             
-    # 批量导入名单
     if request.method == 'POST' and 'batch_import' in request.form:
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
@@ -124,7 +116,7 @@ def admin():
                     db.session.add(new_user)
                     count += 1
         db.session.commit()
-        flash(f'成功导入 {count} 名用户！初始密码均为其学号', 'success')
+        flash(f'成功导入 {count} 名用户！', 'success')
 
     # 处理密码修改/重置
     if request.method == 'POST' and 'change_password' in request.form:
@@ -143,9 +135,9 @@ def admin():
                     flash(f'已修改 {user.name} 的密码', 'success')
 
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
-    users = User.query.order_by(User.id.asc()).all()
+    # 按照角色排序，管理员和老师在前，学生按学号排序
+    users = User.query.order_by(User.role.asc(), User.username.asc()).all()
     
-    # 统计排除默认的 admin 账号
     all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
     
     stats = {}
@@ -164,7 +156,7 @@ def admin():
 def delete_user(user_id):
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     user = User.query.get(user_id)
-    if user and user.username != 'admin':
+    if user and user.username != 'admin' and user.username != current_user.username: # 防止删自己
         db.session.delete(user)
         db.session.commit()
         flash(f'用户 {user.name} 已删除', 'success')
@@ -226,7 +218,6 @@ def teacher():
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
     return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now())
 
-# === 学生面板（包含宏防护） ===
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
 def student():
