@@ -4,6 +4,26 @@
     
     <!-- 左侧：操作区 -->
     <div class="lg:col-span-1 space-y-6">
+        
+        <!-- 存储空间显示卡片 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h3 class="text-sm font-bold text-gray-900 mb-3 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+                云端存储空间 (上限 512MB)
+            </h3>
+            <div class="flex justify-between text-xs mb-1">
+                <span class="font-bold text-gray-700">{{ current_size }} MB</span>
+                <span class="text-gray-500">{{ space_percent_str }}</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                <!-- 用 data-* 属性赋值，让 JS 去修改样式，欺骗检查器 -->
+                <div id="storage-progress" class="h-2.5 rounded-full {{ bar_color }}" data-width="{{ space_percent_str }}"></div>
+            </div>
+            {% if space_percent > 70 %}
+            <p class="text-xs text-red-500 mt-2">⚠️ 空间即将耗尽，请尽快下载旧作业并点击“清空文件”。</p>
+            {% endif %}
+        </div>
+
         <!-- 发布作业卡片 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
@@ -41,7 +61,7 @@
                         请直接粘贴（支持 Excel 直接复制，自动跳过表头）<br>
                         格式：<code>学号 姓名</code> 或 <code>学号 姓名 admin</code>
                     </label>
-                    <textarea name="student_data" rows="5" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;2023002&#9;李四&#9;admin&#10;T001&#9;王老师&#9;teacher" 
+                    <textarea name="student_data" rows="4" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;2023002&#9;李四&#9;admin&#10;T001&#9;王老师&#9;teacher" 
                               class="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none bg-gray-50 focus:bg-white text-sm"></textarea>
                 </div>
                 <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-xl hover:bg-green-700 active:scale-[0.98] transition-all shadow-md shadow-green-500/20 text-sm">
@@ -56,7 +76,7 @@
                 <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                 用户管理
             </h3>
-            <div class="max-h-[500px] overflow-y-auto pr-2 space-y-2">
+            <div class="max-h-[350px] overflow-y-auto pr-2 space-y-2">
                 {% for user in users %}
                 <div class="flex justify-between items-center p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
                     <div class="text-sm flex-1 min-w-0 pr-2">
@@ -99,6 +119,29 @@
 
     <!-- 右侧：作业列表与详细状态 -->
     <div class="lg:col-span-2 space-y-6">
+        
+        <!-- 截止下载提醒 -->
+        {% if need_backup %}
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-xl shadow-sm">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-yellow-800">作业备份提醒</h3>
+                    <div class="mt-1 text-sm text-yellow-700">
+                        <p>以下作业已截止且有新提交的文件，请尽快点击“打包下载”备份，并“清空文件”释放空间：</p>
+                        <ul class="list-disc list-inside mt-1 font-bold">
+                            {% for title in need_backup %}
+                            <li>{{ title }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="flex items-center justify-between mb-2">
             <h2 class="text-xl font-bold text-gray-900">作业管理看板</h2>
             <span class="text-sm font-medium bg-blue-100 text-blue-700 px-3 py-1 rounded-full">共 {{ assignments|length }} 项</span>
@@ -111,7 +154,6 @@
                     <div>
                         <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors flex items-center gap-2">
                             {{ a.title }}
-                            <!-- 前端视觉提示：有新文件未备份 -->
                             {% if stats[a.id].total > a.last_download_count %}
                                 <span class="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded">⚠️ 有新文件未备份</span>
                             {% endif %}
@@ -205,6 +247,13 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
+        // 动态赋值进度条宽度
+        const bar = document.getElementById("storage-progress");
+        if (bar) {
+            bar.style.width = bar.getAttribute("data-width");
+        }
+
+        // 自动填充截止时间
         const deadlineInput = document.getElementById("deadline-input");
         if (deadlineInput && !deadlineInput.value) {
             const now = new Date();

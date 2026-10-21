@@ -1,7 +1,6 @@
 import os
 import io
 import zipfile
-import sqlite3
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file
 from flask_sqlalchemy import SQLAlchemy
@@ -31,7 +30,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), nullable=False) # 'admin', 'teacher', 'student'
+    role = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(50), nullable=False)
 
 class Assignment(db.Model):
@@ -39,7 +38,7 @@ class Assignment(db.Model):
     title = db.Column(db.String(100), nullable=False)
     deadline = db.Column(db.DateTime, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
-    last_download_count = db.Column(db.Integer, default=0) # 新增：最后一次下载时的文件数量
+    last_download_count = db.Column(db.Integer, default=0)
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -52,6 +51,15 @@ class Submission(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+def get_folder_size(folder_path):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(folder_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if not os.path.islink(fp):
+                total_size += os.path.getsize(fp)
+    return total_size / (1024 * 1024)
 
 @app.route('/')
 def index():
@@ -142,14 +150,44 @@ def admin():
     
     stats = {}
     report = {}
+    need_backup = []
+    
     for a in assignments:
         subs = Submission.query.filter_by(assignment_id=a.id).all()
         submitted_ids = [s.student_id for s in subs]
         not_submitted = [s for s in all_students if s.username not in submitted_ids]
         stats[a.id] = {'total': len(subs), 'files': [s.file_name for s in subs]}
         report[a.id] = {'submitted': subs, 'not_submitted': not_submitted}
+        
+        if datetime.now() > a.deadline and len(subs) > 0 and len(subs) > a.last_download_count:
+            need_backup.append(a.title)
 
-    return render_template('admin.html', users=users, assignments=assignments, stats=stats, report=report, now=datetime.now())
+    # 计算空间占用
+    current_size = get_folder_size(app.config['UPLOAD_FOLDER'])
+    max_size = 512.0
+    space_num = round((current_size / max_size) * 100, 1)
+    if space_num > 100: space_num = 100
+    space_percent_str = f"{space_num}%"
+    
+    # 决定颜色类
+    if space_num > 90:
+        bar_color = 'bg-red-500'
+    elif space_num > 70:
+        bar_color = 'bg-yellow-400'
+    else:
+        bar_color = 'bg-green-500'
+
+    return render_template('admin.html', 
+                           users=users, 
+                           assignments=assignments, 
+                           stats=stats, 
+                           report=report, 
+                           now=datetime.now(),
+                           current_size=round(current_size, 2),
+                           space_percent=space_num,
+                           space_percent_str=space_percent_str,
+                           bar_color=bar_color,
+                           need_backup=need_backup)
 
 @app.route('/admin/delete_user/<int:user_id>')
 @login_required
@@ -169,7 +207,6 @@ def delete_assignment(id):
     a = Assignment.query.get(id)
     if a:
         subs = Submission.query.filter_by(assignment_id=id).all()
-        # 核心防护：如果当前有文件，且数量大于最后下载时的数量，说明有未备份文件
         if len(subs) > 0 and len(subs) > a.last_download_count:
             flash('🚨 危险操作被拦截：该作业还有未打包下载的文件，为防止数据丢失，禁止删除！请先打包下载。', 'error')
             return redirect(url_for('admin'))
@@ -191,7 +228,6 @@ def clear_files(assignment_id):
     subs = Submission.query.filter_by(assignment_id=assignment_id).all()
     count = 0
     
-    # 核心防护：如果有未备份文件，拦截清空操作
     if len(subs) > a.last_download_count:
         flash('🚨 危险操作被拦截：该作业还有未打包下载的文件，为防止数据丢失，禁止清空！请先打包下载。', 'error')
         return redirect(url_for('admin'))
@@ -328,7 +364,6 @@ def download_zip(assignment_id):
         flash('该作业暂无学生提交，无法打包。', 'error')
         return redirect(request.referrer)
 
-    # 关键：打包下载时，更新已备份的文件数量
     assignment.last_download_count = len(subs)
     db.session.commit()
 
@@ -351,18 +386,6 @@ def download_zip(assignment_id):
 
 with app.app_context():
     db.create_all()
-    # 自动兼容旧数据库：如果缺少 last_download_count 字段，则自动添加
-    db_path = os.path.join(DATA_DIR, 'database.db')
-    if os.path.exists(db_path):
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(assignment)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if 'last_download_count' not in columns:
-            cursor.execute("ALTER TABLE assignment ADD COLUMN last_download_count INTEGER DEFAULT 0")
-            conn.commit()
-        conn.close()
-
     if not User.query.filter_by(username='admin').first():
         db.session.add(User(username='admin', password_hash=generate_password_hash('admin123'), role='admin', name='超级管理员'))
         db.session.commit()
