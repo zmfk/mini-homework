@@ -18,48 +18,60 @@
 </head>
 <body class="text-gray-800 min-h-screen flex flex-col">
     <nav class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div class="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <a href="/" class="flex items-center space-x-3 group">
-                    <div class="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center text-white shadow-sm group-hover:bg-gray-800 transition-colors">
-                        <svg class="w-7 h-7" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- 调整了 px 大小，防止小屏贴边 -->
+        <div class="w-full max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+            
+            <!-- 左侧 Logo 与标题 -->
+            <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+                <a href="/" class="flex items-center space-x-2 group">
+                    <!-- 小屏用 w-8 h-8，大屏用 w-10 h-10 -->
+                    <div class="w-8 h-8 sm:w-10 sm:h-10 bg-gray-900 rounded-lg sm:rounded-xl flex items-center justify-center text-white shadow-sm group-hover:bg-gray-800 transition-colors flex-shrink-0">
+                        <svg class="w-5 h-5 sm:w-7 sm:h-7" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d='M50 20 L78 36 L78 64 L50 80 L22 64 L22 36 Z' stroke='white' stroke-width='6' stroke-linejoin='round'/>
                             <path d='M22 36 L50 52 L78 36' stroke='white' stroke-width='6' stroke-linejoin='round'/>
                             <path d='M50 52 L50 80' stroke='white' stroke-width='6' stroke-linejoin='round'/>
                         </svg>
                     </div>
-                    <span class="text-xl font-bold text-gray-900 tracking-tight">作业提交系统</span>
+                    <!-- 禁止文字换行，小屏字号稍小 -->
+                    <span class="text-base sm:text-xl font-bold text-gray-900 tracking-tight whitespace-nowrap">作业提交系统</span>
                 </a>
             </div>
             
             {% if current_user.is_authenticated %}
-            <div class="flex items-center space-x-6">
-                {% if current_user.role == 'admin' %}
-                    <a href="/admin" class="text-sm font-medium text-gray-600 hover:text-blue-600">管理后台</a>
-                    <a href="/student" class="text-sm font-medium text-gray-600 hover:text-blue-600">交作业</a>
-                {% elif current_user.role == 'teacher' %}
-                    <a href="/teacher" class="text-sm font-medium text-gray-600 hover:text-blue-600">批改中心</a>
-                {% else %}
-                    <a href="/student" class="text-sm font-medium text-gray-600 hover:text-blue-600">我的作业</a>
-                {% endif %}
+            <!-- 右侧导航区：小屏缩小间距 -->
+            <div class="flex items-center space-x-2 sm:space-x-4 md:space-x-6">
+                
+                <!-- 导航链接 -->
+                <div class="flex items-center space-x-2 sm:space-x-4">
+                    {% if current_user.role == 'admin' %}
+                        <a href="/admin" class="text-xs sm:text-sm font-medium text-gray-600 hover:text-blue-600 whitespace-nowrap">管理后台</a>
+                        <a href="/student" class="text-xs sm:text-sm font-medium text-gray-600 hover:text-blue-600 whitespace-nowrap">交作业</a>
+                    {% elif current_user.role == 'teacher' %}
+                        <a href="/teacher" class="text-xs sm:text-sm font-medium text-gray-600 hover:text-blue-600 whitespace-nowrap">批改中心</a>
+                    {% else %}
+                        <a href="/student" class="text-xs sm:text-sm font-medium text-gray-600 hover:text-blue-600 whitespace-nowrap">我的作业</a>
+                    {% endif %}
+                </div>
 
-                <div class="flex items-center space-x-2">
-                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-600 border border-blue-200">
+                <!-- 用户头像与信息 -->
+                <div class="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
+                    <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs sm:text-sm font-bold text-blue-600 border border-blue-200">
                         {{ current_user.name[0] }}
                     </div>
-                    <div class="hidden md:block text-sm text-right">
+                    <div class="hidden md:block text-sm text-right whitespace-nowrap">
                         <p class="font-medium text-gray-900">{{ current_user.name }}</p>
                         <p class="text-xs text-gray-500 capitalize">{{ current_user.role }}</p>
                     </div>
                 </div>
-                <a href="{{ url_for('logout') }}" class="text-sm font-medium text-gray-500 hover:text-red-600 transition-colors bg-gray-50 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-gray-200">退出登录</a>
+                
+                <!-- 退出按钮 -->
+                <a href="{{ url_for('logout') }}" class="text-xs sm:text-sm font-medium text-gray-500 hover:text-red-600 transition-colors bg-gray-50 hover:bg-red-50 px-2 sm:px-3 py-1.5 rounded-lg border border-gray-200 whitespace-nowrap">退出登录</a>
             </div>
             {% endif %}
         </div>
     </nav>
 
-    <!-- 核心修改：将最大宽度放宽到 1600px -->
-    <main class="flex-grow w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="flex-grow w-full max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -67,7 +79,7 @@
                           {% if category == 'error' %} bg-red-50 border-red-200 text-red-700 
                           {% else %} bg-blue-50 border-blue-200 text-blue-700 {% endif %}">
                 <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <span class="font-medium">{{ message }}</span>
+                <span class="font-medium text-sm">{{ message }}</span>
               </div>
             {% endfor %}
           {% endif %}
