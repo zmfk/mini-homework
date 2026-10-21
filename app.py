@@ -86,7 +86,6 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# === 新增：轮询接口 ===
 @app.route('/api/submission_count')
 @login_required
 def submission_count():
@@ -168,6 +167,12 @@ def admin():
         subs = Submission.query.filter_by(assignment_id=a.id).all()
         submitted_ids = [s.student_id for s in subs]
         not_submitted = [s for s in all_students if s.username not in submitted_ids]
+        
+        # 核心修复：检查文件是否真的存在
+        for sub in subs:
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+            sub.file_exists = os.path.exists(filepath)
+            
         stats[a.id] = {'total': len(subs), 'files': [s.file_name for s in subs]}
         report[a.id] = {'submitted': subs, 'not_submitted': not_submitted}
         
@@ -190,7 +195,6 @@ def admin():
     else:
         bar_color = 'bg-green-500'
 
-    # 获取当前总提交数，传给前端
     current_total_subs = Submission.query.count()
 
     return render_template('admin.html', 
@@ -205,7 +209,7 @@ def admin():
                            space_percent_str=space_percent_str,
                            bar_color=bar_color,
                            need_backup=need_backup,
-                           current_total_subs=current_total_subs) # 新增
+                           current_total_subs=current_total_subs)
 
 @app.route('/admin/delete_user/<int:user_id>')
 @login_required
@@ -279,7 +283,7 @@ def delete_submission(submission_id):
         if os.path.exists(filepath): os.remove(filepath)
         db.session.delete(sub)
         db.session.commit()
-        flash(f'已删除 {sub.student_name} 的提交记录和文件。', 'success')
+        flash(f'已删除 {sub.student_name} 的提交记录。', 'success')
     return redirect(request.referrer or url_for('admin'))
 
 @app.route('/teacher')
@@ -296,6 +300,12 @@ def teacher():
         sub_list = [s for s in submissions if s.assignment_id == a.id]
         submitted_ids = [s.student_id for s in sub_list]
         not_submitted = [s for s in all_students if s.username not in submitted_ids]
+        
+        # 核心修复：老师端也要检查文件是否存在
+        for sub in sub_list:
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+            sub.file_exists = os.path.exists(filepath)
+            
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
         
     current_total_subs = Submission.query.count()

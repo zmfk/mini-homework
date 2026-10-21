@@ -208,8 +208,13 @@
                                 <span class="font-medium text-gray-800">{{ sub.student_id }} - {{ sub.student_name }}</span>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
-                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交记录和文件吗？')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
+                                <!-- 核心修复：判断文件是否存在 -->
+                                {% if sub.file_exists %}
+                                    <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
+                                {% else %}
+                                    <span class="text-gray-400 text-xs italic bg-white px-2 py-1 rounded border border-gray-200 cursor-not-allowed">已清理</span>
+                                {% endif %}
+                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交记录吗？')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
                             </div>
                         </li>
                         {% else %}
@@ -277,7 +282,6 @@
             deadlineInput.value = defaultTime;
         }
 
-        // 读取总提交数
         const dataContainer = document.getElementById('data-container');
         let currentTotalSubs = parseInt(dataContainer.getAttribute('data-total-subs')) || 0;
         
@@ -297,7 +301,7 @@
                 .catch(error => {
                     console.log("检查更新失败", error);
                 });
-        }, 60000); // 60秒
+        }, 60000);
     });
 
     function promptChangePassword(btn) {
