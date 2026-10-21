@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 去掉父容器的定高和隐藏溢出，让其在移动端自然流动 -->
+<!-- 外层不再限制高度，随内容自然撑开 -->
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
     
     <!-- ==================== 左侧列 (3/12)：表单操作区 ==================== -->
-    <!-- 核心修改：使用 sticky 吸附顶部，限制最大高度，让内部独立滚动 -->
-    <div class="lg:col-span-3 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto pr-2 pb-4 custom-scrollbar">
+    <div class="lg:col-span-3 space-y-6 pb-4">
         
         <!-- 存储空间显示卡片 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -74,8 +73,7 @@
     </div>
 
     <!-- ==================== 中间列 (6/12)：作业管理看板 ==================== -->
-    <!-- 核心修改：中间列同样使用 sticky 吸附，独立滚动 -->
-    <div class="lg:col-span-6 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto pr-2 pb-4 custom-scrollbar">
+    <div class="lg:col-span-6 space-y-6 pb-4">
         
         <!-- 截止下载提醒 -->
         {% if need_backup %}
@@ -147,7 +145,7 @@
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                             已交名单 ({{ report[a.id].submitted|length }}人)
                         </strong>
-                        <ul class="space-y-2 max-h-[220px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
+                        <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
                             {% for sub in report[a.id].submitted %}
                             <li class="flex justify-between items-center bg-green-50/50 p-2 rounded-lg border border-green-100">
                                 <div class="flex items-center min-w-0 pr-2">
@@ -175,7 +173,7 @@
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                             未交名单 ({{ report[a.id].not_submitted|length }}人)
                         </strong>
-                        <ul class="space-y-2 max-h-[220px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
+                        <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
                             {% for stu in report[a.id].not_submitted %}
                             <li class="flex items-center bg-red-50/50 p-2 rounded-lg border border-red-100">
                                 <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-1.5 flex-shrink-0">{{ stu.name[0] }}</div>
@@ -197,17 +195,27 @@
     </div>
 
     <!-- ==================== 右侧列 (3/12)：用户管理 ==================== -->
-    <!-- 核心修改：改用 sticky top-24 和固定高度，保持与左侧平齐 -->
     <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)]">
         <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
             <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
             用户管理
         </h3>
+
+        <!-- 新增：搜索框 -->
+        <div class="relative mb-3 flex-shrink-0">
+            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            <input type="text" id="userSearchInput" placeholder="搜索姓名或学号..." 
+                   class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
+        </div>
         
-        <!-- 只有用户列表内部滚动 -->
-        <div class="overflow-y-auto pr-2 space-y-1 flex-grow custom-scrollbar">
+        <!-- 用户列表 -->
+        <div class="overflow-y-auto pr-2 space-y-1 flex-grow custom-scrollbar" id="userListContainer">
             {% for user in users %}
-            <div class="flex flex-col p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100 gap-1.5">
+            <!-- 加了 user-item 类和 data-search 属性，用于 JS 搜索 -->
+            <div class="user-item flex flex-col p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100 gap-1.5" 
+                 data-search="{{ user.name|lower }} {{ user.username|lower }}">
                 <div class="text-sm flex justify-between items-start">
                     <div class="min-w-0 pr-2">
                         <p class="font-bold text-gray-900 truncate">{{ user.name }}</p>
@@ -245,6 +253,11 @@
                 </div>
             </div>
             {% endfor %}
+            
+            <!-- 无搜索结果提示 -->
+            <div id="noSearchResult" class="text-center text-gray-400 text-xs py-8 hidden">
+                没有找到匹配的用户
+            </div>
         </div>
     </div>
 
@@ -293,6 +306,34 @@
                 })
                 .catch(() => console.log("检查更新失败"));
         }, 60000);
+
+        // ================= 新增：用户搜索功能 =================
+        const searchInput = document.getElementById('userSearchInput');
+        const userItems = document.querySelectorAll('.user-item');
+        const noResult = document.getElementById('noSearchResult');
+
+        searchInput.addEventListener('input', function() {
+            const keyword = this.value.toLowerCase().trim();
+            let visibleCount = 0;
+
+            userItems.forEach(item => {
+                // 获取存在 data-search 里面的内容（姓名+学号）
+                const searchText = item.getAttribute('data-search');
+                if (searchText.includes(keyword)) {
+                    item.classList.remove('hidden');
+                    visibleCount++;
+                } else {
+                    item.classList.add('hidden');
+                }
+            });
+
+            // 控制“无搜索结果”的显示
+            if (visibleCount === 0 && keyword !== '') {
+                noResult.classList.remove('hidden');
+            } else {
+                noResult.classList.add('hidden');
+            }
+        });
     });
 
     function promptChangePassword(btn) {
