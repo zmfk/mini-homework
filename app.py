@@ -53,43 +53,55 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# 辅助函数：获取 PythonAnywhere 真实 API 数据，并计算好百分比和颜色
+# 辅助函数：获取 PythonAnywhere CPU 数据，并计算应用自身目录大小
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
     username = os.environ.get('PA_USERNAME')
     
-    if not token or not username:
-        return None
-        
+    # CPU 数据依然通过官方 API 获取
+    cpu_data = {}
+    if token and username:
+        try:
+            headers = {'Authorization': f'Token {token}'}
+            cpu_res = requests.get(f'https://www.pythonanywhere.com/api/v0/user/{username}/cpu/', headers=headers, timeout=3)
+            if cpu_res.status_code == 200:
+                cpu_data = cpu_res.json()
+        except Exception:
+            pass
+
+    # 磁盘数据：计算我们应用自己的 data 目录大小（近似值）
+    app_disk_usage = 0
     try:
-        headers = {'Authorization': f'Token {token}'}
-        cpu_res = requests.get(f'https://www.pythonanywhere.com/api/v0/user/{username}/cpu/', headers=headers, timeout=3)
-        disk_res = requests.get(f'https://www.pythonanywhere.com/api/v0/user/{username}/disk/', headers=headers, timeout=3)
-        
-        cpu_data = cpu_res.json() if cpu_res.status_code == 200 else {}
-        disk_data = disk_res.json() if disk_res.status_code == 200 else {}
-        
-        cpu_usage = cpu_data.get('daily_cpu_total_usage_seconds', 0)
-        cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
-        disk_usage = disk_data.get('usage', 0)
-        disk_limit = disk_data.get('limit', 512)
-        
-        cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
-        disk_pct = round((disk_usage / disk_limit) * 100, 1) if disk_limit else 0
-        
-        return {
-            'cpu_usage': round(cpu_usage, 1),
-            'cpu_limit': cpu_limit,
-            'cpu_pct': cpu_pct,
-            'cpu_color': 'bg-red-500' if cpu_pct > 70 else 'bg-yellow-400' if cpu_pct > 40 else 'bg-green-500',
-            
-            'disk_usage': round(disk_usage, 1),
-            'disk_limit': disk_limit,
-            'disk_pct': disk_pct,
-            'disk_color': 'bg-red-500' if disk_pct > 80 else 'bg-yellow-400' if disk_pct > 50 else 'bg-green-500'
-        }
+        for dirpath, dirnames, filenames in os.walk(DATA_DIR):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                if not os.path.islink(fp):
+                    app_disk_usage += os.path.getsize(fp)
+        app_disk_usage = round(app_disk_usage / (1024 * 1024), 1) # 转换为 MB
     except Exception:
-        return None
+        pass
+
+    cpu_usage = cpu_data.get('daily_cpu_total_usage_seconds', 0)
+    cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
+    
+    cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
+    # 磁盘上限固定显示 512MB（免费版配额）
+    disk_limit = 512.0
+    disk_pct = round((app_disk_usage / disk_limit) * 100, 1) if disk_limit else 0
+    
+    return {
+        'cpu_usage': round(cpu_usage, 1),
+        'cpu_limit': cpu_limit,
+        'cpu_pct': cpu_pct,
+        'cpu_color': 'bg-red-500' if cpu_pct > 70 else 'bg-yellow-400' if cpu_pct > 40 else 'bg-green-500',
+        
+        # 注意：这里的 disk_usage 是应用 data 目录大小，不是账户总用量
+        'disk_usage': app_disk_usage,
+        'disk_limit': disk_limit,
+        'disk_pct': disk_pct,
+        'disk_color': 'bg-red-500' if disk_pct > 80 else 'bg-yellow-400' if disk_pct > 50 else 'bg-green-500',
+        'api_connected': bool(token and username) # 用于前端显示是否连接了官方 API
+    }
 
 @app.route('/')
 def index():
