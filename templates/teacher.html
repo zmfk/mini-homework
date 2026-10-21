@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-5xl mx-auto">
-    <div class="flex items-center justify-between mb-8">
+<div class="max-w-5xl mx-auto flex flex-col min-h-[calc(100vh-8rem)]">
+    <div class="flex items-center justify-between mb-8 flex-shrink-0">
         <div>
             <h2 class="text-2xl font-bold text-gray-900">老师面板 - 批改中心</h2>
             <p class="text-sm text-gray-500 mt-1">在此查看学生提交情况并统一下载文件</p>
@@ -11,10 +11,10 @@
         </div>
     </div>
 
-    <div class="space-y-6">
+    <div class="space-y-6 flex-grow flex flex-col">
         {% for a in assignments %}
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-shadow hover:shadow-md">
-            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col flex-grow transition-shadow hover:shadow-md">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/30 flex-shrink-0">
                 <div>
                     <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
                         {{ a.title }}
@@ -34,13 +34,13 @@
                 </a>
             </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 text-sm">
+            <div class="grid grid-cols-1 md:grid-cols-2 text-sm flex-grow">
                 <!-- 已交名单 -->
-                <div class="p-6 md:border-r border-gray-100 border-b md:border-b-0">
-                    <strong class="text-green-700 block mb-4 flex items-center text-base">
+                <div class="p-6 md:border-r border-gray-100 border-b md:border-b-0 flex flex-col h-full">
+                    <strong class="text-green-700 block mb-4 flex items-center text-base flex-shrink-0">
                         已交学生 ({{ report[a.id].submitted|length }}人)
                     </strong>
-                    <ul class="space-y-2">
+                    <ul class="space-y-2 overflow-y-auto flex-grow">
                         {% for sub in report[a.id].submitted %}
                         <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100 group">
                             <div class="flex items-center">
@@ -57,32 +57,38 @@
                             </div>
                         </li>
                         {% else %}
-                        <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
+                        <li class="flex flex-col items-center justify-center py-8 text-gray-400 h-full">
+                            <svg class="w-12 h-12 text-gray-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                            <span class="italic">暂无学生提交</span>
+                        </li>
                         {% endfor %}
                     </ul>
                 </div>
                 
                 <!-- 未交名单 -->
-                <div class="p-6 bg-gray-50/30">
-                    <strong class="text-red-600 block mb-4 flex items-center text-base">
+                <div class="p-6 bg-gray-50/30 flex flex-col h-full">
+                    <strong class="text-red-600 block mb-4 flex items-center text-base flex-shrink-0">
                         未交学生 ({{ report[a.id].not_submitted|length }}人)
                     </strong>
-                    <ul class="space-y-2">
+                    <ul class="space-y-2 overflow-y-auto flex-grow">
                         {% for stu in report[a.id].not_submitted %}
                         <li class="flex items-center bg-white p-2.5 rounded-lg border border-red-100">
                             <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2">{{ stu.name[0] }}</div>
                             <span class="text-gray-700">{{ stu.username }} - {{ stu.name }}</span>
                         </li>
                         {% else %}
-                        <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
+                        <li class="flex flex-col items-center justify-center py-8 text-green-600 h-full">
+                            <svg class="w-12 h-12 text-green-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="font-medium">全员已交</span>
+                        </li>
                         {% endfor %}
                     </ul>
                 </div>
             </div>
         </div>
         {% else %}
-        <div class="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-300">
-            <p class="text-gray-500">暂无布置的作业</p>
+        <div class="flex-grow flex flex-col items-center justify-center bg-white rounded-2xl border border-dashed border-gray-300 min-h-[400px]">
+            <p class="text-gray-500 font-medium">暂无布置的作业</p>
         </div>
         {% endfor %}
     </div>

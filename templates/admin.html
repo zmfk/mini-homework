@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<!-- 核心修改：让整个 Grid 的高度至少填满屏幕剩余空间 -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[calc(100vh-8rem)]">
     
     <!-- 左侧：操作区 -->
     <div class="lg:col-span-1 space-y-6">
@@ -71,12 +72,12 @@
         </div>
 
         <!-- 用户管理卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-grow flex flex-col">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center flex-shrink-0">
                 <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                 用户管理
             </h3>
-            <div class="max-h-[350px] overflow-y-auto pr-2 space-y-2">
+            <div class="overflow-y-auto pr-2 space-y-2 flex-grow" style="max-height: 400px;">
                 {% for user in users %}
                 <div class="flex justify-between items-center p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
                     <div class="text-sm flex-1 min-w-0 pr-2">
@@ -118,11 +119,11 @@
     </div>
 
     <!-- 右侧：作业列表与详细状态 -->
-    <div class="lg:col-span-2 space-y-6">
+    <div class="lg:col-span-2 flex flex-col space-y-6">
         
         <!-- 截止下载提醒 -->
         {% if need_backup %}
-        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-xl shadow-sm">
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-xl shadow-sm flex-shrink-0">
             <div class="flex items-start">
                 <div class="flex-shrink-0">
                     <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
@@ -142,111 +143,123 @@
         </div>
         {% endif %}
 
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-2 flex-shrink-0">
             <h2 class="text-xl font-bold text-gray-900">作业管理看板</h2>
             <span class="text-sm font-medium bg-blue-100 text-blue-700 px-3 py-1 rounded-full">共 {{ assignments|length }} 项</span>
         </div>
 
-        {% for a in assignments %}
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden group hover:shadow-md transition-shadow">
-            <div class="p-6 border-b border-gray-100">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors flex items-center gap-2">
-                            {{ a.title }}
-                            {% if stats[a.id].total > a.last_download_count %}
-                                <span class="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded">⚠️ 有新文件未备份</span>
-                            {% endif %}
-                        </h3>
-                        <div class="flex items-center space-x-4 mt-2 text-sm text-gray-500">
-                            <span class="flex items-center">
-                                <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                {{ a.deadline.strftime('%Y-%m-%d %H:%M') }}
-                            </span>
-                            <span class="flex items-center">
-                                <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                已交 {{ stats[a.id].total }} 人
-                            </span>
+        <!-- 核心修改：让作业列表区域填满剩余高度 -->
+        <div class="flex-grow flex flex-col space-y-6">
+            {% for a in assignments %}
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col flex-grow group hover:shadow-md transition-shadow">
+                <div class="p-6 border-b border-gray-100 flex-shrink-0">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                                {{ a.title }}
+                                {% if stats[a.id].total > a.last_download_count %}
+                                    <span class="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded">⚠️ 有新文件未备份</span>
+                                {% endif %}
+                            </h3>
+                            <div class="flex items-center space-x-4 mt-2 text-sm text-gray-500">
+                                <span class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    {{ a.deadline.strftime('%Y-%m-%d %H:%M') }}
+                                </span>
+                                <span class="flex items-center">
+                                    <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                    已交 {{ stats[a.id].total }} 人
+                                </span>
+                            </div>
                         </div>
+                        
+                        <div class="flex flex-col items-end space-y-3">
+                            {% if a.is_active %}
+                                <span class="px-3 py-1 text-xs font-bold bg-green-100 text-green-700 rounded-full border border-green-200">强制开放中</span>
+                            {% elif now > a.deadline %}
+                                <span class="px-3 py-1 text-xs font-bold bg-red-100 text-red-700 rounded-full border border-red-200">已截止</span>
+                            {% else %}
+                                <span class="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-700 rounded-full border border-blue-200">进行中</span>
+                            {% endif %}
+                            
+                            <div class="flex flex-wrap justify-end gap-2 text-sm font-medium bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center">打包下载</a>
+                                <span class="text-gray-300">|</span>
+                                <a href="/admin/toggle_assignment/{{ a.id }}" class="text-orange-500 hover:text-orange-700 hover:underline">
+                                    {% if a.is_active %}关闭{% else %}唤出{% endif %}
+                                </a>
+                                <span class="text-gray-300">|</span>
+                                <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空该作业下的所有物理文件吗？(名单将保留)')" class="text-purple-600 hover:text-purple-800 hover:underline">清空文件</a>
+                                <span class="text-gray-300">|</span>
+                                <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('警告：确定彻底删除整个作业吗？(名单也会被删掉)')" class="text-red-500 hover:text-red-700 hover:underline">删除作业</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 核心修改：让下方的双栏区域也填满 -->
+                <div class="bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm flex-grow">
+                    <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">
+                        <strong class="text-green-600 block mb-3 flex items-center border-b pb-2 flex-shrink-0">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            已交名单 ({{ report[a.id].submitted|length }}人)
+                        </strong>
+                        <!-- 把 max-h-56 去掉，用 flex-grow 撑开 -->
+                        <ul class="space-y-2 overflow-y-auto pr-1 flex-grow">
+                            {% for sub in report[a.id].submitted %}
+                            <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100">
+                                <div class="flex items-center">
+                                    <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-2">{{ sub.student_name[0] }}</div>
+                                    <span class="font-medium text-gray-800">{{ sub.student_id }} - {{ sub.student_name }}</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    {% if sub.file_exists %}
+                                        <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
+                                    {% else %}
+                                        <span class="text-gray-400 text-xs italic bg-white px-2 py-1 rounded border border-gray-200 cursor-not-allowed">已清理</span>
+                                    {% endif %}
+                                    <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交记录吗？')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
+                                </div>
+                            </li>
+                            {% else %}
+                            <!-- 优化空状态 UI -->
+                            <li class="flex flex-col items-center justify-center py-8 text-gray-400 h-full">
+                                <svg class="w-12 h-12 text-gray-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                                <span class="italic">暂无学生提交</span>
+                            </li>
+                            {% endfor %}
+                        </ul>
                     </div>
                     
-                    <div class="flex flex-col items-end space-y-3">
-                        {% if a.is_active %}
-                            <span class="px-3 py-1 text-xs font-bold bg-green-100 text-green-700 rounded-full border border-green-200">强制开放中</span>
-                        {% elif now > a.deadline %}
-                            <span class="px-3 py-1 text-xs font-bold bg-red-100 text-red-700 rounded-full border border-red-200">已截止</span>
-                        {% else %}
-                            <span class="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-700 rounded-full border border-blue-200">进行中</span>
-                        {% endif %}
-                        
-                        <div class="flex flex-wrap justify-end gap-2 text-sm font-medium bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                            <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center">打包下载</a>
-                            <span class="text-gray-300">|</span>
-                            <a href="/admin/toggle_assignment/{{ a.id }}" class="text-orange-500 hover:text-orange-700 hover:underline">
-                                {% if a.is_active %}关闭{% else %}唤出{% endif %}
-                            </a>
-                            <span class="text-gray-300">|</span>
-                            <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空该作业下的所有物理文件吗？(名单将保留)')" class="text-purple-600 hover:text-purple-800 hover:underline">清空文件</a>
-                            <span class="text-gray-300">|</span>
-                            <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('警告：确定彻底删除整个作业吗？(名单也会被删掉)')" class="text-red-500 hover:text-red-700 hover:underline">删除作业</a>
-                        </div>
+                    <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">
+                        <strong class="text-red-500 block mb-3 flex items-center border-b pb-2 flex-shrink-0">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            未交名单 ({{ report[a.id].not_submitted|length }}人)
+                        </strong>
+                        <ul class="space-y-2 overflow-y-auto pr-1 flex-grow">
+                            {% for stu in report[a.id].not_submitted %}
+                            <li class="flex items-center bg-red-50/50 p-2.5 rounded-lg border border-red-100">
+                                <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2">{{ stu.name[0] }}</div>
+                                <span class="text-gray-800">{{ stu.username }} - {{ stu.name }}</span>
+                            </li>
+                            {% else %}
+                            <li class="flex flex-col items-center justify-center py-8 text-green-600 h-full">
+                                <svg class="w-12 h-12 text-green-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span class="font-medium">全员已交</span>
+                            </li>
+                            {% endfor %}
+                        </ul>
                     </div>
                 </div>
             </div>
-
-            <div class="bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                    <strong class="text-green-600 block mb-3 flex items-center border-b pb-2">
-                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                        已交名单 ({{ report[a.id].submitted|length }}人)
-                    </strong>
-                    <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
-                        {% for sub in report[a.id].submitted %}
-                        <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100">
-                            <div class="flex items-center">
-                                <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-2">{{ sub.student_name[0] }}</div>
-                                <span class="font-medium text-gray-800">{{ sub.student_id }} - {{ sub.student_name }}</span>
-                            </div>
-                            <div class="flex items-center space-x-2">
-                                <!-- 核心修复：判断文件是否存在 -->
-                                {% if sub.file_exists %}
-                                    <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
-                                {% else %}
-                                    <span class="text-gray-400 text-xs italic bg-white px-2 py-1 rounded border border-gray-200 cursor-not-allowed">已清理</span>
-                                {% endif %}
-                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交记录吗？')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
-                            </div>
-                        </li>
-                        {% else %}
-                        <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                
-                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                    <strong class="text-red-500 block mb-3 flex items-center border-b pb-2">
-                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        未交名单 ({{ report[a.id].not_submitted|length }}人)
-                    </strong>
-                    <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
-                        {% for stu in report[a.id].not_submitted %}
-                        <li class="flex items-center bg-red-50/50 p-2.5 rounded-lg border border-red-100">
-                            <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2">{{ stu.name[0] }}</div>
-                            <span class="text-gray-800">{{ stu.username }} - {{ stu.name }}</span>
-                        </li>
-                        {% else %}
-                        <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
-                        {% endfor %}
-                    </ul>
-                </div>
+            {% else %}
+            <div class="flex-grow flex flex-col items-center justify-center bg-white rounded-2xl border border-dashed border-gray-300 min-h-[400px]">
+                <svg class="w-16 h-16 text-gray-200 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                <p class="text-gray-500 font-medium text-lg">暂无布置的作业</p>
+                <p class="text-gray-400 text-sm mt-1">请在左侧创建你的第一个作业</p>
             </div>
+            {% endfor %}
         </div>
-        {% else %}
-        <div class="text-center py-24 bg-white rounded-2xl border border-dashed border-gray-300">
-            <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
-            <p class="text-gray-500 font-medium">暂无布置的作业</p>
-        </div>
-        {% endfor %}
     </div>
 </div>
 
