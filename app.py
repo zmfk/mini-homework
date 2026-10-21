@@ -2,7 +2,7 @@ import os
 import io
 import zipfile
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -52,15 +52,9 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# 辅助函数：计算整个项目目录的总大小 (MB)，忽略缓存文件
 def get_folder_size(folder_path):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(folder_path):
-        # 排除不需要计算的大文件夹，比如 .git 和 __pycache__
-        if '.git' in dirnames: dirnames.remove('.git')
-        if '__pycache__' in dirnames: dirnames.remove('__pycache__')
-        if 'venv' in dirnames: dirnames.remove('venv') # 如果有虚拟环境也排除（视情况而定）
-        
         for f in filenames:
             fp = os.path.join(dirpath, f)
             if not os.path.islink(fp):
@@ -68,7 +62,7 @@ def get_folder_size(folder_path):
                     total_size += os.path.getsize(fp)
                 except:
                     pass
-    return total_size / (1024 * 1024) # 转换为 MB
+    return total_size / (1024 * 1024)
 
 @app.route('/')
 def index():
@@ -91,6 +85,15 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+# === 新增：轮询接口 ===
+@app.route('/api/submission_count')
+@login_required
+def submission_count():
+    if current_user.role not in ['admin', 'teacher']:
+        return jsonify({"error": "unauthorized"}), 403
+    total = Submission.query.count()
+    return jsonify({"total": total})
 
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
@@ -171,14 +174,15 @@ def admin():
         if datetime.now() > a.deadline and len(subs) > 0 and len(subs) > a.last_download_count:
             need_backup.append(a.title)
 
-    # 计算整个项目的空间占用
-    current_size = get_folder_size(BASE_DIR)
+    BASE_SYSTEM_SIZE = 3.6
+    upload_size = get_folder_size(app.config['UPLOAD_FOLDER'])
+    total_size = BASE_SYSTEM_SIZE + upload_size
+    
     max_size = 512.0
-    space_num = round((current_size / max_size) * 100, 1)
+    space_num = round((total_size / max_size) * 100, 1)
     if space_num > 100: space_num = 100
     space_percent_str = f"{space_num}%"
     
-    # 决定颜色类
     if space_num > 90:
         bar_color = 'bg-red-500'
     elif space_num > 70:
@@ -186,17 +190,22 @@ def admin():
     else:
         bar_color = 'bg-green-500'
 
+    # 获取当前总提交数，传给前端
+    current_total_subs = Submission.query.count()
+
     return render_template('admin.html', 
                            users=users, 
                            assignments=assignments, 
                            stats=stats, 
                            report=report, 
                            now=datetime.now(),
-                           current_size=round(current_size, 2),
+                           upload_size=round(upload_size, 2),
+                           total_size=round(total_size, 2),
                            space_percent=space_num,
                            space_percent_str=space_percent_str,
                            bar_color=bar_color,
-                           need_backup=need_backup)
+                           need_backup=need_backup,
+                           current_total_subs=current_total_subs) # 新增
 
 @app.route('/admin/delete_user/<int:user_id>')
 @login_required
@@ -288,7 +297,10 @@ def teacher():
         submitted_ids = [s.student_id for s in sub_list]
         not_submitted = [s for s in all_students if s.username not in submitted_ids]
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
-    return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now())
+        
+    current_total_subs = Submission.query.count()
+    
+    return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now(), current_total_subs=current_total_subs)
 
 @app.route('/student', methods=['GET', 'POST'])
 @login_required

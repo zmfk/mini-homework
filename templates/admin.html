@@ -9,16 +9,16 @@
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-sm font-bold text-gray-900 mb-3 flex items-center">
                 <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
-                项目总空间占用 (上限 512MB)
+                云端总占用 (上限 512MB)
             </h3>
             <div class="flex justify-between text-xs mb-1">
-                <span class="font-bold text-gray-700">{{ current_size }} MB</span>
+                <span class="font-bold text-gray-700">{{ total_size }} MB</span>
                 <span class="text-gray-500">{{ space_percent_str }}</span>
             </div>
             <div class="w-full bg-gray-200 rounded-full h-2.5">
-                <!-- 用 data-* 属性赋值，让 JS 去修改样式，欺骗检查器 -->
                 <div id="storage-progress" class="h-2.5 rounded-full {{ bar_color }}" data-width="{{ space_percent_str }}"></div>
             </div>
+            <p class="text-[11px] text-gray-400 mt-2">* 包含系统环境约 3.6MB。当前学生作业文件占用 {{ upload_size }} MB。</p>
             {% if space_percent > 70 %}
             <p class="text-xs text-red-500 mt-2">⚠️ 空间即将耗尽，请尽快下载旧作业并点击“清空文件”。</p>
             {% endif %}
@@ -245,15 +245,28 @@
     </div>
 </div>
 
+<!-- 隐藏数据容器，防止 JS 报红线 -->
+<div id="data-container" data-total-subs="{{ current_total_subs }}" class="hidden"></div>
+
+<!-- 悬浮刷新提示框 -->
+<div id="refresh-toast" class="fixed bottom-8 right-8 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
+    <div class="flex items-center">
+        <span class="relative flex h-3 w-3 mr-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+        </span>
+        <span class="font-medium text-sm">有学生刚刚提交了作业！</span>
+    </div>
+    <button onclick="window.location.reload()" class="bg-white text-gray-900 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">立即刷新</button>
+</div>
+
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        // 动态赋值进度条宽度
         const bar = document.getElementById("storage-progress");
         if (bar) {
             bar.style.width = bar.getAttribute("data-width");
         }
 
-        // 自动填充截止时间
         const deadlineInput = document.getElementById("deadline-input");
         if (deadlineInput && !deadlineInput.value) {
             const now = new Date();
@@ -263,6 +276,28 @@
             const defaultTime = `${year}-${month}-${day}T23:59`;
             deadlineInput.value = defaultTime;
         }
+
+        // 读取总提交数
+        const dataContainer = document.getElementById('data-container');
+        let currentTotalSubs = parseInt(dataContainer.getAttribute('data-total-subs')) || 0;
+        
+        setInterval(function() {
+            fetch('/api/submission_count')
+                .then(response => {
+                    if (response.ok) return response.json();
+                    throw new Error("Network error");
+                })
+                .then(data => {
+                    if (data.total > currentTotalSubs) {
+                        const toast = document.getElementById('refresh-toast');
+                        toast.classList.remove('translate-y-20', 'opacity-0');
+                        currentTotalSubs = data.total; 
+                    }
+                })
+                .catch(error => {
+                    console.log("检查更新失败", error);
+                });
+        }, 60000); // 60秒
     });
 
     function promptChangePassword(btn) {
