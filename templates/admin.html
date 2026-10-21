@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 核心修改：让整个 Grid 的高度至少填满屏幕剩余空间 -->
+<!-- 核心修改：利用 Grid 自动等高，两侧平齐 -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[calc(100vh-8rem)]">
     
     <!-- 左侧：操作区 -->
-    <div class="lg:col-span-1 space-y-6">
+    <div class="lg:col-span-1 space-y-6 flex flex-col">
         
         <!-- 存储空间显示卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-shrink-0">
             <h3 class="text-sm font-bold text-gray-900 mb-3 flex items-center">
                 <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
                 云端总占用 (上限 512MB)
@@ -26,7 +26,7 @@
         </div>
 
         <!-- 发布作业卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-shrink-0">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 发布新作业
@@ -50,7 +50,7 @@
         </div>
 
         <!-- 批量导入学生卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-shrink-0">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
                 导入名单
@@ -62,7 +62,7 @@
                         请直接粘贴（支持 Excel 直接复制，自动跳过表头）<br>
                         格式：<code>学号 姓名</code> 或 <code>学号 姓名 admin</code>
                     </label>
-                    <textarea name="student_data" rows="4" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;2023002&#9;李四&#9;admin&#10;T001&#9;王老师&#9;teacher" 
+                    <textarea name="student_data" rows="3" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;2023002&#9;李四&#9;admin&#10;T001&#9;王老师&#9;teacher" 
                               class="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none bg-gray-50 focus:bg-white text-sm"></textarea>
                 </div>
                 <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-xl hover:bg-green-700 active:scale-[0.98] transition-all shadow-md shadow-green-500/20 text-sm">
@@ -71,13 +71,13 @@
             </form>
         </div>
 
-        <!-- 用户管理卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-grow flex flex-col">
+        <!-- 用户管理卡片 (自适应剩余高度) -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-grow flex flex-col min-h-[250px]">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center flex-shrink-0">
                 <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                 用户管理
             </h3>
-            <div class="overflow-y-auto pr-2 space-y-2 flex-grow" style="max-height: 400px;">
+            <div class="overflow-y-auto pr-2 space-y-2 flex-grow">
                 {% for user in users %}
                 <div class="flex justify-between items-center p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
                     <div class="text-sm flex-1 min-w-0 pr-2">
@@ -148,11 +148,11 @@
             <span class="text-sm font-medium bg-blue-100 text-blue-700 px-3 py-1 rounded-full">共 {{ assignments|length }} 项</span>
         </div>
 
-        <!-- 核心修改：让作业列表区域填满剩余高度 -->
-        <div class="flex-grow flex flex-col space-y-6">
+        <!-- 作业卡片列表区 -->
+        <div class="space-y-6 flex-grow">
             {% for a in assignments %}
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col flex-grow group hover:shadow-md transition-shadow">
-                <div class="p-6 border-b border-gray-100 flex-shrink-0">
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-shadow">
+                <div class="p-6 border-b border-gray-100">
                     <div class="flex justify-between items-start">
                         <div>
                             <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors flex items-center gap-2">
@@ -197,15 +197,14 @@
                     </div>
                 </div>
 
-                <!-- 核心修改：让下方的双栏区域也填满 -->
-                <div class="bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm flex-grow">
-                    <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">
-                        <strong class="text-green-600 block mb-3 flex items-center border-b pb-2 flex-shrink-0">
+                <div class="bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                        <strong class="text-green-600 block mb-3 flex items-center border-b pb-2">
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                             已交名单 ({{ report[a.id].submitted|length }}人)
                         </strong>
-                        <!-- 把 max-h-56 去掉，用 flex-grow 撑开 -->
-                        <ul class="space-y-2 overflow-y-auto pr-1 flex-grow">
+                        <!-- 恢复 max-h-56 限制 -->
+                        <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
                             {% for sub in report[a.id].submitted %}
                             <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100">
                                 <div class="flex items-center">
@@ -222,41 +221,33 @@
                                 </div>
                             </li>
                             {% else %}
-                            <!-- 优化空状态 UI -->
-                            <li class="flex flex-col items-center justify-center py-8 text-gray-400 h-full">
-                                <svg class="w-12 h-12 text-gray-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
-                                <span class="italic">暂无学生提交</span>
-                            </li>
+                            <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
                             {% endfor %}
                         </ul>
                     </div>
                     
-                    <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">
-                        <strong class="text-red-500 block mb-3 flex items-center border-b pb-2 flex-shrink-0">
+                    <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                        <strong class="text-red-500 block mb-3 flex items-center border-b pb-2">
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                             未交名单 ({{ report[a.id].not_submitted|length }}人)
                         </strong>
-                        <ul class="space-y-2 overflow-y-auto pr-1 flex-grow">
+                        <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
                             {% for stu in report[a.id].not_submitted %}
                             <li class="flex items-center bg-red-50/50 p-2.5 rounded-lg border border-red-100">
                                 <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2">{{ stu.name[0] }}</div>
                                 <span class="text-gray-800">{{ stu.username }} - {{ stu.name }}</span>
                             </li>
                             {% else %}
-                            <li class="flex flex-col items-center justify-center py-8 text-green-600 h-full">
-                                <svg class="w-12 h-12 text-green-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                <span class="font-medium">全员已交</span>
-                            </li>
+                            <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
                             {% endfor %}
                         </ul>
                     </div>
                 </div>
             </div>
             {% else %}
-            <div class="flex-grow flex flex-col items-center justify-center bg-white rounded-2xl border border-dashed border-gray-300 min-h-[400px]">
-                <svg class="w-16 h-16 text-gray-200 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
-                <p class="text-gray-500 font-medium text-lg">暂无布置的作业</p>
-                <p class="text-gray-400 text-sm mt-1">请在左侧创建你的第一个作业</p>
+            <div class="text-center py-24 bg-white rounded-2xl border border-dashed border-gray-300">
+                <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                <p class="text-gray-500 font-medium">暂无布置的作业</p>
             </div>
             {% endfor %}
         </div>
