@@ -1,210 +1,212 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 核心修改：外层容器在大屏（lg）下固定高度并隐藏全局滚动，实现三列独立滚动 -->
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full lg:h-[calc(100vh-8rem)] lg:overflow-hidden">
+<!-- 父容器：在大屏下限制高度为视口高度减去导航栏高度（约 4rem），并隐藏全局滚动 -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full lg:h-[calc(100vh-5rem)] lg:overflow-hidden">
     
     <!-- ==================== 左侧列 (3/12)：表单操作区 ==================== -->
-    <!-- 核心修改：大屏下占满高度，出现独立的内部滚动条 -->
-    <div class="lg:col-span-3 lg:h-full lg:overflow-y-auto pr-2 pb-4 custom-scrollbar space-y-6">
-        
-        <!-- 存储空间显示卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h3 class="text-sm font-bold text-gray-900 mb-3 flex items-center">
-                <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
-                云端总占用 (上限 512MB)
-            </h3>
-            <div class="flex justify-between text-xs mb-1">
-                <span class="font-bold text-gray-700">{{ total_size }} MB</span>
-                <span class="text-gray-500">{{ space_percent_str }}</span>
+    <!-- 关键：min-h-0 确保 flex 子项能正确计算高度并触发内部滚动 -->
+    <div class="lg:col-span-3 flex flex-col min-h-0 pb-4">
+        <!-- 内部滚动容器 -->
+        <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar">
+            <!-- 存储空间显示卡片 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <h3 class="text-sm font-bold text-gray-900 mb-3 flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+                    云端总占用 (上限 512MB)
+                </h3>
+                <div class="flex justify-between text-xs mb-1">
+                    <span class="font-bold text-gray-700">{{ total_size }} MB</span>
+                    <span class="text-gray-500">{{ space_percent_str }}</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="storage-progress" class="h-2.5 rounded-full {{ bar_color }}" data-width="{{ space_percent_str }}"></div>
+                </div>
+                <p class="text-[11px] text-gray-400 mt-2">* 包含系统环境约 3.6MB。当前作业文件 {{ upload_size }} MB。</p>
+                {% if space_percent > 70 %}
+                <p class="text-xs text-red-500 mt-2">⚠️ 空间即将耗尽，请尽快下载并“清空文件”。</p>
+                {% endif %}
             </div>
-            <div class="w-full bg-gray-200 rounded-full h-2.5">
-                <div id="storage-progress" class="h-2.5 rounded-full {{ bar_color }}" data-width="{{ space_percent_str }}"></div>
+
+            <!-- 发布作业卡片 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    发布新作业
+                </h3>
+                <form method="POST" class="space-y-3">
+                    <input type="hidden" name="create_assignment" value="1">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">作业名称</label>
+                        <input type="text" name="title" placeholder="例如：第一次作业" required 
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">截止时间</label>
+                        <input type="datetime-local" name="deadline" id="deadline-input" required 
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700 transition-all shadow-sm">
+                        立即发布
+                    </button>
+                </form>
             </div>
-            <p class="text-[11px] text-gray-400 mt-2">* 包含系统环境约 3.6MB。当前作业文件 {{ upload_size }} MB。</p>
-            {% if space_percent > 70 %}
-            <p class="text-xs text-red-500 mt-2">⚠️ 空间即将耗尽，请尽快下载并“清空文件”。</p>
-            {% endif %}
-        </div>
 
-        <!-- 发布作业卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
-                <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                发布新作业
-            </h3>
-            <form method="POST" class="space-y-3">
-                <input type="hidden" name="create_assignment" value="1">
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">作业名称</label>
-                    <input type="text" name="title" placeholder="例如：第一次作业" required 
-                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">截止时间</label>
-                    <input type="datetime-local" name="deadline" id="deadline-input" required 
-                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
-                </div>
-                <button type="submit" class="w-full bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700 transition-all shadow-sm">
-                    立即发布
-                </button>
-            </form>
-        </div>
-
-        <!-- 批量导入学生卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center">
-                <svg class="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                导入名单
-            </h3>
-            <form method="POST" class="space-y-3">
-                <input type="hidden" name="batch_import" value="1">
-                <div>
-                    <label class="block text-[11px] text-gray-500 mb-1">
-                        Excel直接复制，自动跳过表头。<br>
-                        格式：<code>学号 姓名</code> 或 <code>学号 姓名 admin</code>
-                    </label>
-                    <textarea name="student_data" rows="3" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;T001&#9;王老师&#9;teacher" 
-                              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-gray-50 focus:bg-white text-xs"></textarea>
-                </div>
-                <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-lg hover:bg-green-700 transition-all shadow-sm text-xs">
-                    批量导入 (默认密码为学号)
-                </button>
-            </form>
+            <!-- 批量导入学生卡片 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    导入名单
+                </h3>
+                <form method="POST" class="space-y-3">
+                    <input type="hidden" name="batch_import" value="1">
+                    <div>
+                        <label class="block text-[11px] text-gray-500 mb-1">
+                            Excel直接复制，自动跳过表头。<br>
+                            格式：<code>学号 姓名</code> 或 <code>学号 姓名 admin</code>
+                        </label>
+                        <textarea name="student_data" rows="3" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;T001&#9;王老师&#9;teacher" 
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-gray-50 focus:bg-white text-xs"></textarea>
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-lg hover:bg-green-700 transition-all shadow-sm text-xs">
+                        批量导入 (默认密码为学号)
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 
     <!-- ==================== 中间列 (6/12)：作业管理看板 ==================== -->
-    <!-- 核心修改：同样占满高度并内部滚动 -->
-    <div class="lg:col-span-6 lg:h-full lg:overflow-y-auto pr-2 pb-4 custom-scrollbar space-y-6">
-        
-        <!-- 截止下载提醒 -->
-        {% if need_backup %}
-        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-r-lg shadow-sm">
-            <h3 class="text-xs font-bold text-yellow-800 mb-1">备份提醒</h3>
-            <ul class="list-disc list-inside text-xs text-yellow-700 font-bold">
-                {% for title in need_backup %}
-                <li>{{ title }}</li>
+    <div class="lg:col-span-6 flex flex-col min-h-0 pb-4">
+        <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar">
+            <!-- 截止下载提醒 -->
+            {% if need_backup %}
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-r-lg shadow-sm">
+                <h3 class="text-xs font-bold text-yellow-800 mb-1">备份提醒</h3>
+                <ul class="list-disc list-inside text-xs text-yellow-700 font-bold">
+                    {% for title in need_backup %}
+                    <li>{{ title }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <div class="flex items-center justify-between mb-1">
+                <h2 class="text-lg font-bold text-gray-900">作业看板</h2>
+                <span class="text-xs font-medium bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">共 {{ assignments|length }} 项</span>
+            </div>
+
+            <div class="space-y-5">
+                {% for a in assignments %}
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                    <!-- 卡片头部 -->
+                    <div class="p-4 border-b border-gray-100">
+                        <div class="flex flex-col gap-2">
+                            <div class="flex justify-between items-start">
+                                <h3 class="text-base font-bold text-gray-900">{{ a.title }}</h3>
+                                {% if a.is_active %}
+                                    <span class="px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded border border-green-200 whitespace-nowrap">强制开放中</span>
+                                {% elif now > a.deadline %}
+                                    <span class="px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 rounded border border-red-200 whitespace-nowrap">已截止</span>
+                                {% else %}
+                                    <span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-700 rounded border border-blue-200 whitespace-nowrap">进行中</span>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                                <span class="flex items-center">
+                                    <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    {{ a.deadline.strftime('%m-%d %H:%M') }}
+                                </span>
+                                <span class="flex items-center">
+                                    <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                    已交 {{ stats[a.id].total }} 人
+                                </span>
+                                {% if stats[a.id].total > a.last_download_count %}
+                                    <span class="text-[10px] font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">⚠️ 未备份</span>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="flex flex-wrap gap-x-2 gap-y-1 text-xs font-medium mt-1">
+                                <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:underline">打包下载</a>
+                                <span class="text-gray-300">|</span>
+                                <a href="/admin/toggle_assignment/{{ a.id }}" class="text-orange-500 hover:underline">
+                                    {% if a.is_active %}关闭{% else %}唤出{% endif %}
+                                </a>
+                                <span class="text-gray-300">|</span>
+                                <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空文件吗？(保留名单)')" class="text-purple-600 hover:underline">清空文件</a>
+                                <span class="text-gray-300">|</span>
+                                <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('确定彻底删除作业吗？')" class="text-red-500 hover:underline">删除作业</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 已交/未交：水平并排 -->
+                    <div class="bg-gray-50/50 p-3 grid grid-cols-2 gap-4 text-sm">
+                        <!-- 已交 -->
+                        <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col min-h-0">
+                            <strong class="text-green-600 block mb-2.5 flex items-center border-b pb-2 flex-shrink-0">
+                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                已交名单 ({{ report[a.id].submitted|length }}人)
+                            </strong>
+                            <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
+                                {% for sub in report[a.id].submitted %}
+                                <li class="flex justify-between items-center bg-green-50/50 p-2 rounded-lg border border-green-100">
+                                    <div class="flex items-center min-w-0 pr-2">
+                                        <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-1.5 flex-shrink-0">{{ sub.student_name[0] }}</div>
+                                        <span class="font-medium text-gray-800 text-xs truncate" title="{{ sub.student_id }} - {{ sub.student_name }}">{{ sub.student_id }} - {{ sub.student_name }}</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5 flex-shrink-0">
+                                        {% if sub.file_exists %}
+                                            <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-[11px] font-medium bg-white px-1.5 py-0.5 rounded border border-gray-200">下载</a>
+                                        {% else %}
+                                            <span class="text-gray-400 text-[11px] italic bg-white px-1.5 py-0.5 rounded border border-gray-200 cursor-not-allowed">已清理</span>
+                                        {% endif %}
+                                        <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交记录吗？')" class="text-red-500 hover:text-red-700 bg-white px-1.5 py-0.5 rounded border border-red-200 text-[11px] font-medium">删除</a>
+                                    </div>
+                                </li>
+                                {% else %}
+                                <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        
+                        <!-- 未交 -->
+                        <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col min-h-0">
+                            <strong class="text-red-500 block mb-2.5 flex items-center border-b pb-2 flex-shrink-0">
+                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                未交名单 ({{ report[a.id].not_submitted|length }}人)
+                            </strong>
+                            <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
+                                {% for stu in report[a.id].not_submitted %}
+                                <li class="flex items-center bg-red-50/50 p-2 rounded-lg border border-red-100">
+                                    <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-1.5 flex-shrink-0">{{ stu.name[0] }}</div>
+                                    <span class="text-gray-800 text-xs truncate" title="{{ stu.username }} - {{ stu.name }}">{{ stu.username }} - {{ stu.name }}</span>
+                                </li>
+                                {% else %}
+                                <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
+                    <p class="text-gray-500 text-sm">暂无作业</p>
+                </div>
                 {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-
-        <div class="flex items-center justify-between mb-1">
-            <h2 class="text-lg font-bold text-gray-900">作业看板</h2>
-            <span class="text-xs font-medium bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">共 {{ assignments|length }} 项</span>
-        </div>
-
-        <div class="space-y-5">
-            {% for a in assignments %}
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-                <!-- 卡片头部 -->
-                <div class="p-4 border-b border-gray-100">
-                    <div class="flex flex-col gap-2">
-                        <div class="flex justify-between items-start">
-                            <h3 class="text-base font-bold text-gray-900">{{ a.title }}</h3>
-                            {% if a.is_active %}
-                                <span class="px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded border border-green-200 whitespace-nowrap">强制开放中</span>
-                            {% elif now > a.deadline %}
-                                <span class="px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 rounded border border-red-200 whitespace-nowrap">已截止</span>
-                            {% else %}
-                                <span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-700 rounded border border-blue-200 whitespace-nowrap">进行中</span>
-                            {% endif %}
-                        </div>
-                        
-                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                            <span class="flex items-center">
-                                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                {{ a.deadline.strftime('%m-%d %H:%M') }}
-                            </span>
-                            <span class="flex items-center">
-                                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                已交 {{ stats[a.id].total }} 人
-                            </span>
-                            {% if stats[a.id].total > a.last_download_count %}
-                                <span class="text-[10px] font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">⚠️ 未备份</span>
-                            {% endif %}
-                        </div>
-                        
-                        <div class="flex flex-wrap gap-x-2 gap-y-1 text-xs font-medium mt-1">
-                            <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:underline">打包下载</a>
-                            <span class="text-gray-300">|</span>
-                            <a href="/admin/toggle_assignment/{{ a.id }}" class="text-orange-500 hover:underline">
-                                {% if a.is_active %}关闭{% else %}唤出{% endif %}
-                            </a>
-                            <span class="text-gray-300">|</span>
-                            <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空文件吗？(保留名单)')" class="text-purple-600 hover:underline">清空文件</a>
-                            <span class="text-gray-300">|</span>
-                            <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('确定彻底删除作业吗？')" class="text-red-500 hover:underline">删除作业</a>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 已交/未交：水平并排 -->
-                <div class="bg-gray-50/50 p-3 grid grid-cols-2 gap-4 text-sm">
-                    <!-- 已交 -->
-                    <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col">
-                        <strong class="text-green-600 block mb-2.5 flex items-center border-b pb-2 flex-shrink-0">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                            已交名单 ({{ report[a.id].submitted|length }}人)
-                        </strong>
-                        <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
-                            {% for sub in report[a.id].submitted %}
-                            <li class="flex justify-between items-center bg-green-50/50 p-2 rounded-lg border border-green-100">
-                                <div class="flex items-center min-w-0 pr-2">
-                                    <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-1.5 flex-shrink-0">{{ sub.student_name[0] }}</div>
-                                    <span class="font-medium text-gray-800 text-xs truncate" title="{{ sub.student_id }} - {{ sub.student_name }}">{{ sub.student_id }} - {{ sub.student_name }}</span>
-                                </div>
-                                <div class="flex items-center space-x-1.5 flex-shrink-0">
-                                    {% if sub.file_exists %}
-                                        <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-[11px] font-medium bg-white px-1.5 py-0.5 rounded border border-gray-200">下载</a>
-                                    {% else %}
-                                        <span class="text-gray-400 text-[11px] italic bg-white px-1.5 py-0.5 rounded border border-gray-200 cursor-not-allowed">已清理</span>
-                                    {% endif %}
-                                    <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交记录吗？')" class="text-red-500 hover:text-red-700 bg-white px-1.5 py-0.5 rounded border border-red-200 text-[11px] font-medium">删除</a>
-                                </div>
-                            </li>
-                            {% else %}
-                            <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                    
-                    <!-- 未交 -->
-                    <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col">
-                        <strong class="text-red-500 block mb-2.5 flex items-center border-b pb-2 flex-shrink-0">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                            未交名单 ({{ report[a.id].not_submitted|length }}人)
-                        </strong>
-                        <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
-                            {% for stu in report[a.id].not_submitted %}
-                            <li class="flex items-center bg-red-50/50 p-2 rounded-lg border border-red-100">
-                                <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-1.5 flex-shrink-0">{{ stu.name[0] }}</div>
-                                <span class="text-gray-800 text-xs truncate" title="{{ stu.username }} - {{ stu.name }}">{{ stu.username }} - {{ stu.name }}</span>
-                            </li>
-                            {% else %}
-                            <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
             </div>
-            {% else %}
-            <div class="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
-                <p class="text-gray-500 text-sm">暂无作业</p>
-            </div>
-            {% endfor %}
         </div>
     </div>
 
     <!-- ==================== 右侧列 (3/12)：用户管理 ==================== -->
-    <!-- 核心修改：外层高度占满，内部卡片 flex 撑满，保证搜索框固定，列表滚动 -->
-    <div class="lg:col-span-3 lg:h-full flex flex-col">
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-full">
+    <div class="lg:col-span-3 flex flex-col min-h-0 pb-4">
+        <!-- 卡片本身使用 flex-col 和 h-full，确保内部列表能滚动 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-full min-h-0">
             <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
                 <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                 用户管理
             </h3>
-    
+
             <!-- 搜索框 (固定不滚动) -->
             <div class="relative mb-3 flex-shrink-0">
                 <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
