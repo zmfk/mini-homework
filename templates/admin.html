@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 核心修改：利用 Grid 自动等高，两侧平齐 -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[calc(100vh-8rem)]">
+<!-- 去掉 min-h 限制，让高度自然适应 -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
     
     <!-- 左侧：操作区 -->
-    <div class="lg:col-span-1 space-y-6 flex flex-col">
+    <div class="lg:col-span-1 space-y-6">
         
         <!-- 存储空间显示卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-shrink-0">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-sm font-bold text-gray-900 mb-3 flex items-center">
                 <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
                 云端总占用 (上限 512MB)
@@ -26,7 +26,7 @@
         </div>
 
         <!-- 发布作业卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-shrink-0">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 发布新作业
@@ -50,7 +50,7 @@
         </div>
 
         <!-- 批量导入学生卡片 -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-shrink-0">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
                 导入名单
@@ -71,13 +71,14 @@
             </form>
         </div>
 
-        <!-- 用户管理卡片 (自适应剩余高度) -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex-grow flex flex-col min-h-[250px]">
+        <!-- 用户管理卡片 (限制最大高度) -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center flex-shrink-0">
                 <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                 用户管理
             </h3>
-            <div class="overflow-y-auto pr-2 space-y-2 flex-grow">
+            <!-- 限制最大高度为 400px，超出部分内部滚动 -->
+            <div class="overflow-y-auto pr-2 space-y-2 max-h-[400px]">
                 {% for user in users %}
                 <div class="flex justify-between items-center p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
                     <div class="text-sm flex-1 min-w-0 pr-2">
@@ -203,7 +204,6 @@
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                             已交名单 ({{ report[a.id].submitted|length }}人)
                         </strong>
-                        <!-- 恢复 max-h-56 限制 -->
                         <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
                             {% for sub in report[a.id].submitted %}
                             <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100">

@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 利用 Grid 保证左右等高，内部列表自然排列即可 -->
-<div class="max-w-5xl mx-auto flex flex-col min-h-[calc(100vh-8rem)]">
-    <div class="flex items-center justify-between mb-8 flex-shrink-0">
+<div class="max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-8">
         <div>
             <h2 class="text-2xl font-bold text-gray-900">老师面板 - 批改中心</h2>
             <p class="text-sm text-gray-500 mt-1">在此查看学生提交情况并统一下载文件</p>
@@ -12,9 +11,9 @@
         </div>
     </div>
 
-    <div class="space-y-6 flex-grow">
+    <div class="space-y-6">
         {% for a in assignments %}
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 transition-shadow hover:shadow-md">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-shadow hover:shadow-md">
             <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
                 <div>
                     <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
