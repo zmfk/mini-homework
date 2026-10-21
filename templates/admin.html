@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 三列网格布局 -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+<!-- 核心修改：利用 12 列网格 3-6-3 比例分配，撑满宽屏 -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
     
-    <!-- ==================== 左侧列：表单操作区 ==================== -->
-    <div class="space-y-6">
+    <!-- ==================== 左侧列 (3/12)：表单操作区 ==================== -->
+    <div class="lg:col-span-3 space-y-6">
         
         <!-- 存储空间显示卡片 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -72,8 +72,8 @@
         </div>
     </div>
 
-    <!-- ==================== 中间列：作业管理看板 ==================== -->
-    <div class="space-y-6">
+    <!-- ==================== 中间列 (6/12)：作业管理看板 ==================== -->
+    <div class="lg:col-span-6 space-y-6">
         
         <!-- 截止下载提醒 -->
         {% if need_backup %}
@@ -137,7 +137,7 @@
                     </div>
                 </div>
 
-                <!-- 核心：恢复左右并排网格，但优化了内部间距和按钮 -->
+                <!-- 保持左右并排 -->
                 <div class="bg-gray-50/50 p-3 grid grid-cols-2 gap-3 text-xs">
                     <!-- 已交 -->
                     <div class="bg-white p-2.5 rounded-lg border border-gray-100 shadow-sm flex flex-col">
@@ -189,8 +189,8 @@
         </div>
     </div>
 
-    <!-- ==================== 右侧列：用户管理 ==================== -->
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-[calc(100vh-8rem)] sticky top-24">
+    <!-- ==================== 右侧列 (3/12)：用户管理 ==================== -->
+    <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-[calc(100vh-8rem)] sticky top-24">
         <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
             <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
             用户管理
