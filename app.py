@@ -53,12 +53,11 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# 辅助函数：获取 PythonAnywhere CPU 数据，并计算应用自身目录大小
+# 辅助函数：获取 PythonAnywhere CPU 数据，磁盘数据固定为 4.4MB
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
     username = os.environ.get('PA_USERNAME')
     
-    # CPU 数据依然通过官方 API 获取
     cpu_data = {}
     if token and username:
         try:
@@ -69,25 +68,14 @@ def get_pa_stats():
         except Exception:
             pass
 
-    # 磁盘数据：计算我们应用自己的 data 目录大小（近似值）
-    app_disk_usage = 0
-    try:
-        for dirpath, dirnames, filenames in os.walk(DATA_DIR):
-            for f in filenames:
-                fp = os.path.join(dirpath, f)
-                if not os.path.islink(fp):
-                    app_disk_usage += os.path.getsize(fp)
-        app_disk_usage = round(app_disk_usage / (1024 * 1024), 1) # 转换为 MB
-    except Exception:
-        pass
-
     cpu_usage = cpu_data.get('daily_cpu_total_usage_seconds', 0)
     cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
-    
     cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
-    # 磁盘上限固定显示 512MB（免费版配额）
+    
+    # 核心修改：直接固定磁盘占用为 4.4 MB
+    app_disk_usage = 4.4
     disk_limit = 512.0
-    disk_pct = round((app_disk_usage / disk_limit) * 100, 1) if disk_limit else 0
+    disk_pct = round((app_disk_usage / disk_limit) * 100, 1)
     
     return {
         'cpu_usage': round(cpu_usage, 1),
@@ -95,12 +83,11 @@ def get_pa_stats():
         'cpu_pct': cpu_pct,
         'cpu_color': 'bg-red-500' if cpu_pct > 70 else 'bg-yellow-400' if cpu_pct > 40 else 'bg-green-500',
         
-        # 注意：这里的 disk_usage 是应用 data 目录大小，不是账户总用量
         'disk_usage': app_disk_usage,
         'disk_limit': disk_limit,
         'disk_pct': disk_pct,
-        'disk_color': 'bg-red-500' if disk_pct > 80 else 'bg-yellow-400' if disk_pct > 50 else 'bg-green-500',
-        'api_connected': bool(token and username) # 用于前端显示是否连接了官方 API
+        'disk_color': 'bg-green-500',
+        'api_connected': bool(token and username)
     }
 
 @app.route('/')
