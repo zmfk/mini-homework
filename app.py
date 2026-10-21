@@ -52,14 +52,23 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# 辅助函数：计算整个项目目录的总大小 (MB)，忽略缓存文件
 def get_folder_size(folder_path):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(folder_path):
+        # 排除不需要计算的大文件夹，比如 .git 和 __pycache__
+        if '.git' in dirnames: dirnames.remove('.git')
+        if '__pycache__' in dirnames: dirnames.remove('__pycache__')
+        if 'venv' in dirnames: dirnames.remove('venv') # 如果有虚拟环境也排除（视情况而定）
+        
         for f in filenames:
             fp = os.path.join(dirpath, f)
             if not os.path.islink(fp):
-                total_size += os.path.getsize(fp)
-    return total_size / (1024 * 1024)
+                try:
+                    total_size += os.path.getsize(fp)
+                except:
+                    pass
+    return total_size / (1024 * 1024) # 转换为 MB
 
 @app.route('/')
 def index():
@@ -162,8 +171,8 @@ def admin():
         if datetime.now() > a.deadline and len(subs) > 0 and len(subs) > a.last_download_count:
             need_backup.append(a.title)
 
-    # 计算空间占用
-    current_size = get_folder_size(app.config['UPLOAD_FOLDER'])
+    # 计算整个项目的空间占用
+    current_size = get_folder_size(BASE_DIR)
     max_size = 512.0
     space_num = round((current_size / max_size) * 100, 1)
     if space_num > 100: space_num = 100
