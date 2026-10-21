@@ -126,13 +126,21 @@ def admin():
         db.session.commit()
         flash(f'成功导入 {count} 名用户！初始密码均为其学号', 'success')
 
-    # 重置密码
+    # 处理密码修改/重置
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
+        action = request.form.get('action')
         if user:
-            user.password_hash = generate_password_hash(request.form.get('new_password'))
-            db.session.commit()
-            flash('密码重置成功', 'success')
+            if action == 'reset':
+                user.password_hash = generate_password_hash(user.username)
+                db.session.commit()
+                flash(f'已将 {user.name} 的密码重置为学号', 'success')
+            elif action == 'change':
+                new_pwd = request.form.get('new_password')
+                if new_pwd:
+                    user.password_hash = generate_password_hash(new_pwd)
+                    db.session.commit()
+                    flash(f'已修改 {user.name} 的密码', 'success')
 
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     users = User.query.order_by(User.id.asc()).all()
@@ -208,7 +216,6 @@ def teacher():
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
     
-    # 老师统计同样排除 admin 账号
     all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
     
     report = {}
@@ -236,11 +243,9 @@ def student():
             flash('该作业已截止提交！', 'error')
             return redirect(url_for('student'))
 
-        # 1. 强制禁用老旧的 .doc 格式，只允许 .pdf 和 .docx
         if file and file.filename.lower().endswith(('.pdf', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
             
-            # 2. 如果上传的是 .docx，进行极速宏检测
             if ext == '.docx':
                 try:
                     with zipfile.ZipFile(file.stream) as zf:
@@ -253,7 +258,6 @@ def student():
                 finally:
                     file.stream.seek(0) 
 
-            # 3. 安全，执行保存逻辑
             safe_title = assignment.title
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
                 safe_title = safe_title.replace(char, '')

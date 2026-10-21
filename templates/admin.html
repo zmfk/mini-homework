@@ -41,7 +41,7 @@
                         请直接粘贴（支持 Excel 直接复制，自动跳过表头）<br>
                         格式：<code>学号 姓名</code> 或 <code>学号 姓名 admin</code>
                     </label>
-                    <textarea name="student_data" rows="6" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;2023002&#9;李四&#9;admin&#10;T001&#9;王老师&#9;teacher" 
+                    <textarea name="student_data" rows="5" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;2023002&#9;李四&#9;admin&#10;T001&#9;王老师&#9;teacher" 
                               class="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none bg-gray-50 focus:bg-white text-sm"></textarea>
                 </div>
                 <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-xl hover:bg-green-700 active:scale-[0.98] transition-all shadow-md shadow-green-500/20 text-sm">
@@ -56,29 +56,37 @@
                 <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                 用户管理
             </h3>
-            <div class="max-h-64 overflow-y-auto pr-2 space-y-2">
+            <div class="max-h-96 overflow-y-auto pr-2 space-y-3">
                 {% for user in users %}
-                <div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
-                    <!-- 修改点：加上 flex-1 min-w-0 防止长文本撑破 -->
-                    <div class="text-sm flex-1 min-w-0 pr-2">
-                        <p class="font-medium text-gray-900 truncate">{{ user.name }}</p>
-                        <p class="text-xs text-gray-500 truncate">{{ user.username }} ({{ user.role }})</p>
+                <div class="p-3 hover:bg-gray-50 rounded-xl transition-colors border border-gray-100 bg-white shadow-sm">
+                    <!-- 第一行：姓名和删除 -->
+                    <div class="flex justify-between items-center mb-1">
+                        <div class="text-sm font-bold text-gray-900 truncate">{{ user.name }}</div>
+                        {% if user.username != 'admin' %}
+                        <a href="/admin/delete_user/{{ user.id }}" onclick="return confirm('确定删除该用户吗？')" class="text-xs text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded border border-red-200 transition-colors whitespace-nowrap">删除</a>
+                        {% endif %}
                     </div>
-                    <!-- 修改点：加上 flex-shrink-0 防止挤压变形 -->
-                    <div class="flex items-center space-x-1 flex-shrink-0">
-                        <form method="POST" class="flex items-center space-x-1">
+                    <!-- 第二行：学号和角色 -->
+                    <div class="text-xs text-gray-500 mb-2 truncate">{{ user.username }} ({{ user.role }})</div>
+                    
+                    <!-- 第三行：操作区 -->
+                    <div class="flex items-center space-x-2 mt-2">
+                        <!-- 重置表单 -->
+                        <form method="POST" class="flex-shrink-0">
                             <input type="hidden" name="change_password" value="1">
                             <input type="hidden" name="user_id" value="{{ user.id }}">
-                            <!-- 修改点：输入框宽度稍微减小 w-16 -->
-                            <input type="text" name="new_password" placeholder="新密码" required 
-                                   class="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:border-blue-500 outline-none">
-                            <!-- 修改点：强制文字不换行 whitespace-nowrap -->
-                            <button type="submit" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded border border-gray-200 transition-colors whitespace-nowrap">重置</button>
+                            <input type="hidden" name="action" value="reset">
+                            <button type="submit" onclick="return confirm('确定重置为学号吗？')" class="text-xs bg-orange-50 text-orange-600 hover:bg-orange-100 px-2 py-1.5 rounded border border-orange-200 transition-colors whitespace-nowrap">重置学号</button>
                         </form>
-                        {% if user.username != 'admin' %}
-                        <!-- 修改点：强制文字不换行 whitespace-nowrap -->
-                        <a href="/admin/delete_user/{{ user.id }}" onclick="return confirm('确定删除该用户吗？')" class="text-xs text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded border border-red-200 transition-colors whitespace-nowrap">删除</a>
-                        {% endif %}
+                        <!-- 修改表单 -->
+                        <form method="POST" class="flex items-center space-x-1 flex-1">
+                            <input type="hidden" name="change_password" value="1">
+                            <input type="hidden" name="user_id" value="{{ user.id }}">
+                            <input type="hidden" name="action" value="change">
+                            <input type="text" name="new_password" placeholder="输入新密码" required 
+                                   class="w-full min-w-0 px-2 py-1.5 text-xs border border-gray-300 rounded focus:border-blue-500 outline-none">
+                            <button type="submit" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1.5 rounded border border-gray-200 transition-colors whitespace-nowrap">修改</button>
+                        </form>
                     </div>
                 </div>
                 {% endfor %}
