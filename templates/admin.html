@@ -59,20 +59,25 @@
             <div class="max-h-64 overflow-y-auto pr-2 space-y-2">
                 {% for user in users %}
                 <div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
-                    <div class="text-sm">
-                        <p class="font-medium text-gray-900">{{ user.name }}</p>
-                        <p class="text-xs text-gray-500">{{ user.username }} ({{ user.role }})</p>
+                    <!-- 修改点：加上 flex-1 min-w-0 防止长文本撑破 -->
+                    <div class="text-sm flex-1 min-w-0 pr-2">
+                        <p class="font-medium text-gray-900 truncate">{{ user.name }}</p>
+                        <p class="text-xs text-gray-500 truncate">{{ user.username }} ({{ user.role }})</p>
                     </div>
-                    <div class="flex items-center space-x-2">
-                        <form method="POST" class="flex items-center space-x-2">
+                    <!-- 修改点：加上 flex-shrink-0 防止挤压变形 -->
+                    <div class="flex items-center space-x-1 flex-shrink-0">
+                        <form method="POST" class="flex items-center space-x-1">
                             <input type="hidden" name="change_password" value="1">
                             <input type="hidden" name="user_id" value="{{ user.id }}">
+                            <!-- 修改点：输入框宽度稍微减小 w-16 -->
                             <input type="text" name="new_password" placeholder="新密码" required 
-                                   class="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:border-blue-500 outline-none">
-                            <button type="submit" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded border border-gray-200 transition-colors">重置</button>
+                                   class="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:border-blue-500 outline-none">
+                            <!-- 修改点：强制文字不换行 whitespace-nowrap -->
+                            <button type="submit" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded border border-gray-200 transition-colors whitespace-nowrap">重置</button>
                         </form>
                         {% if user.username != 'admin' %}
-                        <a href="/admin/delete_user/{{ user.id }}" onclick="return confirm('确定删除该用户吗？')" class="text-xs text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded border border-red-200 transition-colors">删除</a>
+                        <!-- 修改点：强制文字不换行 whitespace-nowrap -->
+                        <a href="/admin/delete_user/{{ user.id }}" onclick="return confirm('确定删除该用户吗？')" class="text-xs text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded border border-red-200 transition-colors whitespace-nowrap">删除</a>
                         {% endif %}
                     </div>
                 </div>
