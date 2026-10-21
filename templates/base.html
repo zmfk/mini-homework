@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- 黑底白线等距立方体 Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23090909'/><path d='M50 20 L78 36 L78 64 L50 80 L22 64 L22 36 Z' fill='none' stroke='white' stroke-width='5' stroke-linejoin='round'/><path d='M22 36 L50 52 L78 36' fill='none' stroke='white' stroke-width='5' stroke-linejoin='round'/><path d='M50 52 L50 80' fill='none' stroke='white' stroke-width='5' stroke-linejoin='round'/></svg>">
+    
     <title>作业提交系统</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -17,14 +21,20 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
             <div class="flex items-center space-x-3">
                 <a href="/" class="flex items-center space-x-2">
-                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">H</div>
+                    <!-- 左上角 Logo 也换成了对应的黑底立方体风格，保持统一 -->
+                    <div class="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center text-white font-bold text-xl">
+                        <svg class="w-5 h-5" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d='M50 20 L78 36 L78 64 L50 80 L22 64 L22 36 Z' stroke='white' stroke-width='5' stroke-linejoin='round'/>
+                            <path d='M22 36 L50 52 L78 36' stroke='white' stroke-width='5' stroke-linejoin='round'/>
+                            <path d='M50 52 L50 80' stroke='white' stroke-width='5' stroke-linejoin='round'/>
+                        </svg>
+                    </div>
                     <span class="text-xl font-bold text-gray-900 tracking-tight">Homework System</span>
                 </a>
             </div>
             
             {% if current_user.is_authenticated %}
             <div class="flex items-center space-x-6">
-                <!-- 导航栏：根据角色显示入口 -->
                 {% if current_user.role == 'admin' %}
                     <a href="/admin" class="text-sm font-medium text-gray-600 hover:text-blue-600">管理后台</a>
                     <a href="/student" class="text-sm font-medium text-gray-600 hover:text-blue-600">交作业</a>
