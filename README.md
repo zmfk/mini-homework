@@ -32,3 +32,14 @@
    ```bash
    git clone https://github.com/zmfk/mini-homework.git
    cd mini-homework
+   
+2. 安装依赖：
+    ```bash
+    pip install -r requirements.txt
+
+3. 安装依赖：
+    ```bash
+    python app.py
+
+(首次运行会自动在 data/ 目录下创建 SQLite 数据库并初始化默认管理员)
+
