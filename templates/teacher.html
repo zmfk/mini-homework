@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-5xl mx-auto">
+<div class="max-w-6xl mx-auto">
     <div class="flex items-center justify-between mb-8">
         <div>
             <h2 class="text-2xl font-bold text-gray-900">老师面板 - 批改中心</h2>
@@ -40,7 +40,7 @@
                     <strong class="text-green-700 block mb-4 flex items-center text-base">
                         已交学生 ({{ report[a.id].submitted|length }}人)
                     </strong>
-                    <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                         {% for sub in report[a.id].submitted %}
                         <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100 group">
                             <div class="flex items-center">
@@ -67,7 +67,7 @@
                     <strong class="text-red-600 block mb-4 flex items-center text-base">
                         未交学生 ({{ report[a.id].not_submitted|length }}人)
                     </strong>
-                    <ul class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                         {% for stu in report[a.id].not_submitted %}
                         <li class="flex items-center bg-white p-2.5 rounded-lg border border-red-100">
                             <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2">{{ stu.name[0] }}</div>
@@ -88,7 +88,7 @@
     </div>
 </div>
 
-<!-- 隐藏数据容器，防止 JS 报红线 -->
+<!-- 隐藏数据容器 -->
 <div id="data-container" data-total-subs="{{ current_total_subs }}" class="hidden"></div>
 
 <!-- 悬浮刷新提示框 -->
@@ -110,20 +110,14 @@
         
         setInterval(function() {
             fetch('/api/submission_count')
-                .then(response => {
-                    if (response.ok) return response.json();
-                    throw new Error("Network error");
-                })
+                .then(res => res.ok ? res.json() : Promise.reject())
                 .then(data => {
                     if (data.total > currentTotalSubs) {
-                        const toast = document.getElementById('refresh-toast');
-                        toast.classList.remove('translate-y-20', 'opacity-0');
+                        document.getElementById('refresh-toast').classList.remove('translate-y-20', 'opacity-0');
                         currentTotalSubs = data.total; 
                     }
                 })
-                .catch(error => {
-                    console.log("检查更新失败", error);
-                });
+                .catch(() => console.log("检查更新失败"));
         }, 60000); 
     });
 </script>
