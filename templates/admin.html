@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 核心修改：加入 lg:h-[calc(100vh-8rem)] 限定大屏下的整体高度，并隐藏溢出 -->
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full lg:h-[calc(100vh-8rem)] overflow-hidden">
+<!-- 去掉父容器的定高和隐藏溢出，让其在移动端自然流动 -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
     
     <!-- ==================== 左侧列 (3/12)：表单操作区 ==================== -->
-    <!-- 核心修改：加入 lg:h-full lg:overflow-y-auto，让左列独立滚动 -->
-    <div class="lg:col-span-3 space-y-6 lg:h-full lg:overflow-y-auto pr-2 pb-10 custom-scrollbar">
+    <!-- 核心修改：使用 sticky 吸附顶部，限制最大高度，让内部独立滚动 -->
+    <div class="lg:col-span-3 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto pr-2 pb-4 custom-scrollbar">
         
         <!-- 存储空间显示卡片 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -74,8 +74,8 @@
     </div>
 
     <!-- ==================== 中间列 (6/12)：作业管理看板 ==================== -->
-    <!-- 核心修改：加入 lg:h-full lg:overflow-y-auto，让中间列独立滚动 -->
-    <div class="lg:col-span-6 space-y-6 lg:h-full lg:overflow-y-auto pr-2 pb-10 custom-scrollbar">
+    <!-- 核心修改：中间列同样使用 sticky 吸附，独立滚动 -->
+    <div class="lg:col-span-6 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto pr-2 pb-4 custom-scrollbar">
         
         <!-- 截止下载提醒 -->
         {% if need_backup %}
@@ -139,7 +139,7 @@
                     </div>
                 </div>
 
-                <!-- 已交/未交：完美还原水平并排样式 -->
+                <!-- 已交/未交：水平并排 -->
                 <div class="bg-gray-50/50 p-3 grid grid-cols-2 gap-4 text-sm">
                     <!-- 已交 -->
                     <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col">
@@ -197,13 +197,14 @@
     </div>
 
     <!-- ==================== 右侧列 (3/12)：用户管理 ==================== -->
-    <!-- 核心修改：去除 sticky top-24，直接使用 lg:h-full，利用父级限制高度 -->
-    <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col lg:h-full">
+    <!-- 核心修改：改用 sticky top-24 和固定高度，保持与左侧平齐 -->
+    <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)]">
         <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
             <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
             用户管理
         </h3>
         
+        <!-- 只有用户列表内部滚动 -->
         <div class="overflow-y-auto pr-2 space-y-1 flex-grow custom-scrollbar">
             {% for user in users %}
             <div class="flex flex-col p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100 gap-1.5">
