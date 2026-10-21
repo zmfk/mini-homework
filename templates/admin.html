@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 外层不再限制高度，随内容自然撑开 -->
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
+<!-- 核心修改：外层容器在大屏（lg）下固定高度并隐藏全局滚动，实现三列独立滚动 -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full lg:h-[calc(100vh-8rem)] lg:overflow-hidden">
     
     <!-- ==================== 左侧列 (3/12)：表单操作区 ==================== -->
-    <div class="lg:col-span-3 space-y-6 pb-4">
+    <!-- 核心修改：大屏下占满高度，出现独立的内部滚动条 -->
+    <div class="lg:col-span-3 lg:h-full lg:overflow-y-auto pr-2 pb-4 custom-scrollbar space-y-6">
         
         <!-- 存储空间显示卡片 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -73,7 +74,8 @@
     </div>
 
     <!-- ==================== 中间列 (6/12)：作业管理看板 ==================== -->
-    <div class="lg:col-span-6 space-y-6 pb-4">
+    <!-- 核心修改：同样占满高度并内部滚动 -->
+    <div class="lg:col-span-6 lg:h-full lg:overflow-y-auto pr-2 pb-4 custom-scrollbar space-y-6">
         
         <!-- 截止下载提醒 -->
         {% if need_backup %}
@@ -195,68 +197,70 @@
     </div>
 
     <!-- ==================== 右侧列 (3/12)：用户管理 ==================== -->
-    <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)]">
-        <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
-            <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-            用户管理
-        </h3>
-
-        <!-- 新增：搜索框 -->
-        <div class="relative mb-3 flex-shrink-0">
-            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+    <!-- 核心修改：外层高度占满，内部卡片 flex 撑满，保证搜索框固定，列表滚动 -->
+    <div class="lg:col-span-3 lg:h-full flex flex-col">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-full">
+            <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
+                <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                用户管理
+            </h3>
+    
+            <!-- 搜索框 (固定不滚动) -->
+            <div class="relative mb-3 flex-shrink-0">
+                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <input type="text" id="userSearchInput" placeholder="搜索姓名或学号..." 
+                       class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
             </div>
-            <input type="text" id="userSearchInput" placeholder="搜索姓名或学号..." 
-                   class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
-        </div>
-        
-        <!-- 用户列表 -->
-        <div class="overflow-y-auto pr-2 space-y-1 flex-grow custom-scrollbar" id="userListContainer">
-            {% for user in users %}
-            <!-- 加了 user-item 类和 data-search 属性，用于 JS 搜索 -->
-            <div class="user-item flex flex-col p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100 gap-1.5" 
-                 data-search="{{ user.name|lower }} {{ user.username|lower }}">
-                <div class="text-sm flex justify-between items-start">
-                    <div class="min-w-0 pr-2">
-                        <p class="font-bold text-gray-900 truncate">{{ user.name }}</p>
-                        <p class="text-[11px] text-gray-500 truncate">{{ user.username }} ({{ user.role }})</p>
+            
+            <!-- 用户列表 (自适应剩余高度，内部滚动) -->
+            <div class="overflow-y-auto pr-2 space-y-1 flex-grow custom-scrollbar" id="userListContainer">
+                {% for user in users %}
+                <div class="user-item flex flex-col p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100 gap-1.5" 
+                     data-search="{{ user.name|lower }} {{ user.username|lower }}">
+                    <div class="text-sm flex justify-between items-start">
+                        <div class="min-w-0 pr-2">
+                            <p class="font-bold text-gray-900 truncate">{{ user.name }}</p>
+                            <p class="text-[11px] text-gray-500 truncate">{{ user.username }} ({{ user.role }})</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center space-x-1.5 flex-wrap">
+                        {% if user.role == 'student' %}
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="change_password" value="1">
+                            <input type="hidden" name="user_id" value="{{ user.id }}">
+                            <input type="hidden" name="action" value="reset">
+                            <button type="submit" onclick="return confirm('确定将密码重置为学号吗？')" class="text-[11px] bg-orange-50 text-orange-600 hover:bg-orange-100 px-2 py-1 rounded border border-orange-200 transition-colors whitespace-nowrap">重置学号</button>
+                        </form>
+                        {% endif %}
+
+                        <form method="POST" class="inline" id="changeForm-{{ user.id }}">
+                            <input type="hidden" name="change_password" value="1">
+                            <input type="hidden" name="user_id" value="{{ user.id }}">
+                            <input type="hidden" name="action" value="change">
+                            <input type="hidden" name="new_password" id="newPassword-{{ user.id }}">
+                            <button type="button" 
+                                    data-user-id="{{ user.id }}" 
+                                    data-user-name="{{ user.name }}" 
+                                    onclick="promptChangePassword(this)" 
+                                    class="text-[11px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded border border-blue-200 transition-colors whitespace-nowrap">
+                                改密
+                            </button>
+                        </form>
+
+                        {% if user.username != 'admin' and user.username != current_user.username %}
+                        <a href="/admin/delete_user/{{ user.id }}" onclick="return confirm('确定删除该用户吗？')" class="text-[11px] text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded border border-red-200 transition-colors whitespace-nowrap">删除</a>
+                        {% endif %}
                     </div>
                 </div>
+                {% endfor %}
                 
-                <div class="flex items-center space-x-1.5 flex-wrap">
-                    {% if user.role == 'student' %}
-                    <form method="POST" class="inline">
-                        <input type="hidden" name="change_password" value="1">
-                        <input type="hidden" name="user_id" value="{{ user.id }}">
-                        <input type="hidden" name="action" value="reset">
-                        <button type="submit" onclick="return confirm('确定将密码重置为学号吗？')" class="text-[11px] bg-orange-50 text-orange-600 hover:bg-orange-100 px-2 py-1 rounded border border-orange-200 transition-colors whitespace-nowrap">重置学号</button>
-                    </form>
-                    {% endif %}
-
-                    <form method="POST" class="inline" id="changeForm-{{ user.id }}">
-                        <input type="hidden" name="change_password" value="1">
-                        <input type="hidden" name="user_id" value="{{ user.id }}">
-                        <input type="hidden" name="action" value="change">
-                        <input type="hidden" name="new_password" id="newPassword-{{ user.id }}">
-                        <button type="button" 
-                                data-user-id="{{ user.id }}" 
-                                data-user-name="{{ user.name }}" 
-                                onclick="promptChangePassword(this)" 
-                                class="text-[11px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded border border-blue-200 transition-colors whitespace-nowrap">
-                            改密
-                        </button>
-                    </form>
-
-                    {% if user.username != 'admin' and user.username != current_user.username %}
-                    <a href="/admin/delete_user/{{ user.id }}" onclick="return confirm('确定删除该用户吗？')" class="text-[11px] text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded border border-red-200 transition-colors whitespace-nowrap">删除</a>
-                    {% endif %}
+                <!-- 无搜索结果提示 -->
+                <div id="noSearchResult" class="text-center text-gray-400 text-xs py-8 hidden">
+                    没有找到匹配的用户
                 </div>
-            </div>
-            {% endfor %}
-            
-            <!-- 无搜索结果提示 -->
-            <div id="noSearchResult" class="text-center text-gray-400 text-xs py-8 hidden">
-                没有找到匹配的用户
             </div>
         </div>
     </div>
@@ -307,7 +311,7 @@
                 .catch(() => console.log("检查更新失败"));
         }, 60000);
 
-        // ================= 新增：用户搜索功能 =================
+        // ================= 用户搜索功能 =================
         const searchInput = document.getElementById('userSearchInput');
         const userItems = document.querySelectorAll('.user-item');
         const noResult = document.getElementById('noSearchResult');
@@ -317,7 +321,6 @@
             let visibleCount = 0;
 
             userItems.forEach(item => {
-                // 获取存在 data-search 里面的内容（姓名+学号）
                 const searchText = item.getAttribute('data-search');
                 if (searchText.includes(keyword)) {
                     item.classList.remove('hidden');
@@ -327,7 +330,6 @@
                 }
             });
 
-            // 控制“无搜索结果”的显示
             if (visibleCount === 0 && keyword !== '') {
                 noResult.classList.remove('hidden');
             } else {
