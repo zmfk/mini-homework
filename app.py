@@ -1,6 +1,7 @@
 import os
 import io
 import zipfile
+import requests
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -52,17 +53,43 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-def get_folder_size(folder_path):
-    total_size = 0
-    for dirpath, dirnames, filenames in os.walk(folder_path):
-        for f in filenames:
-            fp = os.path.join(dirpath, f)
-            if not os.path.islink(fp):
-                try:
-                    total_size += os.path.getsize(fp)
-                except:
-                    pass
-    return total_size / (1024 * 1024)
+# 辅助函数：获取 PythonAnywhere 真实 API 数据，并计算好百分比和颜色
+def get_pa_stats():
+    token = os.environ.get('PA_TOKEN')
+    username = os.environ.get('PA_USERNAME')
+    
+    if not token or not username:
+        return None
+        
+    try:
+        headers = {'Authorization': f'Token {token}'}
+        cpu_res = requests.get(f'https://www.pythonanywhere.com/api/v0/user/{username}/cpu/', headers=headers, timeout=3)
+        disk_res = requests.get(f'https://www.pythonanywhere.com/api/v0/user/{username}/disk/', headers=headers, timeout=3)
+        
+        cpu_data = cpu_res.json() if cpu_res.status_code == 200 else {}
+        disk_data = disk_res.json() if disk_res.status_code == 200 else {}
+        
+        cpu_usage = cpu_data.get('daily_cpu_total_usage_seconds', 0)
+        cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
+        disk_usage = disk_data.get('usage', 0)
+        disk_limit = disk_data.get('limit', 512)
+        
+        cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
+        disk_pct = round((disk_usage / disk_limit) * 100, 1) if disk_limit else 0
+        
+        return {
+            'cpu_usage': round(cpu_usage, 1),
+            'cpu_limit': cpu_limit,
+            'cpu_pct': cpu_pct,
+            'cpu_color': 'bg-red-500' if cpu_pct > 70 else 'bg-yellow-400' if cpu_pct > 40 else 'bg-green-500',
+            
+            'disk_usage': round(disk_usage, 1),
+            'disk_limit': disk_limit,
+            'disk_pct': disk_pct,
+            'disk_color': 'bg-red-500' if disk_pct > 80 else 'bg-yellow-400' if disk_pct > 50 else 'bg-green-500'
+        }
+    except Exception:
+        return None
 
 @app.route('/')
 def index():
@@ -168,7 +195,6 @@ def admin():
         submitted_ids = [s.student_id for s in subs]
         not_submitted = [s for s in all_students if s.username not in submitted_ids]
         
-        # 核心修复：检查文件是否真的存在
         for sub in subs:
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
             sub.file_exists = os.path.exists(filepath)
@@ -179,22 +205,7 @@ def admin():
         if datetime.now() > a.deadline and len(subs) > 0 and len(subs) > a.last_download_count:
             need_backup.append(a.title)
 
-    BASE_SYSTEM_SIZE = 3.6
-    upload_size = get_folder_size(app.config['UPLOAD_FOLDER'])
-    total_size = BASE_SYSTEM_SIZE + upload_size
-    
-    max_size = 512.0
-    space_num = round((total_size / max_size) * 100, 1)
-    if space_num > 100: space_num = 100
-    space_percent_str = f"{space_num}%"
-    
-    if space_num > 90:
-        bar_color = 'bg-red-500'
-    elif space_num > 70:
-        bar_color = 'bg-yellow-400'
-    else:
-        bar_color = 'bg-green-500'
-
+    pa_stats = get_pa_stats()
     current_total_subs = Submission.query.count()
 
     return render_template('admin.html', 
@@ -203,13 +214,9 @@ def admin():
                            stats=stats, 
                            report=report, 
                            now=datetime.now(),
-                           upload_size=round(upload_size, 2),
-                           total_size=round(total_size, 2),
-                           space_percent=space_num,
-                           space_percent_str=space_percent_str,
-                           bar_color=bar_color,
                            need_backup=need_backup,
-                           current_total_subs=current_total_subs)
+                           current_total_subs=current_total_subs,
+                           pa_stats=pa_stats)
 
 @app.route('/admin/delete_user/<int:user_id>')
 @login_required
@@ -301,7 +308,6 @@ def teacher():
         submitted_ids = [s.student_id for s in sub_list]
         not_submitted = [s for s in all_students if s.username not in submitted_ids]
         
-        # 核心修复：老师端也要检查文件是否存在
         for sub in sub_list:
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
             sub.file_exists = os.path.exists(filepath)
@@ -309,7 +315,6 @@ def teacher():
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
         
     current_total_subs = Submission.query.count()
-    
     return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now(), current_total_subs=current_total_subs)
 
 @app.route('/student', methods=['GET', 'POST'])
@@ -359,7 +364,7 @@ def student():
             db.session.commit()
             flash('作业提交成功！', 'success')
         else:
-            flash('只支持上传 PDF 或 DOCX 格式！(老旧的 .doc 格式因安全原因被禁用)', 'error')
+            flash('只支持上传 PDF 或 DOCX 格式！', 'error')
             
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     my_subs = {s.assignment_id: s for s in Submission.query.filter_by(student_id=current_user.username).all()}
@@ -368,8 +373,7 @@ def student():
 @app.route('/student/delete/<int:assignment_id>')
 @login_required
 def student_delete(assignment_id):
-    if current_user.role not in ['student', 'admin']: 
-        return "无权限访问", 403
+    if current_user.role not in ['student', 'admin']: return "无权限访问", 403
     sub = Submission.query.filter_by(assignment_id=assignment_id, student_id=current_user.username).first()
     if sub:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)

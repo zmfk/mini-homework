@@ -1,29 +1,61 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- 父容器：在大屏下限制高度为视口高度减去导航栏高度（约 4rem），并隐藏全局滚动 -->
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full lg:h-[calc(100vh-5rem)] lg:overflow-hidden">
     
     <!-- ==================== 左侧列 (3/12)：表单操作区 ==================== -->
-    <!-- 关键：min-h-0 确保 flex 子项能正确计算高度并触发内部滚动 -->
     <div class="lg:col-span-3 flex flex-col min-h-0 pb-4">
-        <!-- 内部滚动容器 -->
         <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar">
-            <!-- 存储空间显示卡片 -->
+            
+            <!-- 动态数据/服务器状态卡片 -->
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                <h3 class="text-sm font-bold text-gray-900 mb-3 flex items-center">
-                    <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
-                    云端总占用 (上限 512MB)
-                </h3>
-                <div class="flex justify-between text-xs mb-1">
-                    <span class="font-bold text-gray-700">{{ total_size }} MB</span>
-                    <span class="text-gray-500">{{ space_percent_str }}</span>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-gray-900 flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+                        运行状态
+                    </h3>
+                    <!-- 动态状态标签 -->
+                    {% if pa_stats %}
+                        <span class="px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded border border-green-200 flex items-center">
+                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse"></span> 已连接
+                        </span>
+                    {% else %}
+                        <span class="px-2 py-0.5 text-[10px] font-bold bg-gray-100 text-gray-500 rounded border border-gray-200 flex items-center">
+                            <span class="w-1.5 h-1.5 bg-gray-400 rounded-full mr-1"></span> 未连接
+                        </span>
+                    {% endif %}
                 </div>
-                <div class="w-full bg-gray-200 rounded-full h-2.5">
-                    <div id="storage-progress" class="h-2.5 rounded-full {{ bar_color }}" data-width="{{ space_percent_str }}"></div>
+                
+                {% if pa_stats %}
+                <!-- 真实 API 数据 -->
+                <div class="space-y-4">
+                    <!-- CPU -->
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="font-bold text-gray-700">每日 CPU 耗时</span>
+                            <span class="text-gray-500">{{ pa_stats.cpu_usage }}s / {{ pa_stats.cpu_limit }}s</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <!-- 用 data-width 存宽度，交给 JS 渲染 -->
+                            <div class="h-2 rounded-full dynamic-stat-bar {{ pa_stats.cpu_color }}" data-width="{{ pa_stats.cpu_pct }}%"></div>
+                        </div>
+                    </div>
+                    <!-- 磁盘 -->
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="font-bold text-gray-700">账号磁盘容量</span>
+                            <span class="text-gray-500">{{ pa_stats.disk_usage }}MB / {{ pa_stats.disk_limit }}MB</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="h-2 rounded-full dynamic-stat-bar {{ pa_stats.disk_color }}" data-width="{{ pa_stats.disk_pct }}%"></div>
+                        </div>
+                    </div>
                 </div>
-                <p class="text-[11px] text-gray-400 mt-2">* 包含系统环境约 3.6MB。当前作业文件 {{ upload_size }} MB。</p>
-                {% if space_percent > 70 %}
-                <p class="text-xs text-red-500 mt-2">⚠️ 空间即将耗尽，请尽快下载并“清空文件”。</p>
+                {% else %}
+                <!-- 未配置 API 的占位说明 -->
+                <div class="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <p class="mb-1">无法获取云端实时数据。</p>
+                    <p class="text-[11px] text-gray-400">如果部署在 PythonAnywhere，请配置 <code>PA_TOKEN</code> 和 <code>PA_USERNAME</code> 环境变量。</p>
+                </div>
                 {% endif %}
             </div>
 
@@ -200,14 +232,13 @@
 
     <!-- ==================== 右侧列 (3/12)：用户管理 ==================== -->
     <div class="lg:col-span-3 flex flex-col min-h-0 pb-4">
-        <!-- 卡片本身使用 flex-col 和 h-full，确保内部列表能滚动 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-full min-h-0">
             <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
                 <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                 用户管理
             </h3>
 
-            <!-- 搜索框 (固定不滚动) -->
+            <!-- 搜索框 -->
             <div class="relative mb-3 flex-shrink-0">
                 <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                     <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -216,7 +247,7 @@
                        class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
             </div>
             
-            <!-- 用户列表 (自适应剩余高度，内部滚动) -->
+            <!-- 用户列表 -->
             <div class="overflow-y-auto pr-2 space-y-1 flex-grow custom-scrollbar" id="userListContainer">
                 {% for user in users %}
                 <div class="user-item flex flex-col p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100 gap-1.5" 
@@ -259,7 +290,6 @@
                 </div>
                 {% endfor %}
                 
-                <!-- 无搜索结果提示 -->
                 <div id="noSearchResult" class="text-center text-gray-400 text-xs py-8 hidden">
                     没有找到匹配的用户
                 </div>
@@ -286,8 +316,10 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        const bar = document.getElementById("storage-progress");
-        if (bar) bar.style.width = bar.getAttribute("data-width");
+        // 动态赋值所有统计进度条的宽度
+        document.querySelectorAll('.dynamic-stat-bar').forEach(el => {
+            el.style.width = el.getAttribute('data-width');
+        });
 
         const deadlineInput = document.getElementById("deadline-input");
         if (deadlineInput && !deadlineInput.value) {
@@ -313,7 +345,7 @@
                 .catch(() => console.log("检查更新失败"));
         }, 60000);
 
-        // ================= 用户搜索功能 =================
+        // 用户搜索功能
         const searchInput = document.getElementById('userSearchInput');
         const userItems = document.querySelectorAll('.user-item');
         const noResult = document.getElementById('noSearchResult');
