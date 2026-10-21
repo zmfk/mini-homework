@@ -16,7 +16,12 @@
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-shadow hover:shadow-md">
             <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
                 <div>
-                    <h3 class="text-lg font-bold text-gray-900">{{ a.title }}</h3>
+                    <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        {{ a.title }}
+                        {% if report[a.id].submitted|length > a.last_download_count %}
+                            <span class="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded">⚠️ 有新文件未备份</span>
+                        {% endif %}
+                    </h3>
                     <p class="text-sm text-gray-500 mt-1 flex items-center">
                         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                         截止时间：{{ a.deadline.strftime('%Y-%m-%d %H:%M') }} 
@@ -44,8 +49,7 @@
                             </div>
                             <div class="flex items-center space-x-2">
                                 <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
-                                <!-- 新增：单独删除按钮 -->
-                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？删除后该学生可重新上传。')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
+                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
                             </div>
                         </li>
                         {% else %}

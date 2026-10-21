@@ -1,6 +1,7 @@
 import os
 import io
 import zipfile
+import sqlite3
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file
 from flask_sqlalchemy import SQLAlchemy
@@ -38,6 +39,7 @@ class Assignment(db.Model):
     title = db.Column(db.String(100), nullable=False)
     deadline = db.Column(db.DateTime, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
+    last_download_count = db.Column(db.Integer, default=0) # 新增：最后一次下载时的文件数量
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -118,7 +120,6 @@ def admin():
         db.session.commit()
         flash(f'成功导入 {count} 名用户！', 'success')
 
-    # 处理密码修改/重置
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
         action = request.form.get('action')
@@ -135,7 +136,6 @@ def admin():
                     flash(f'已修改 {user.name} 的密码', 'success')
 
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
-    # 按照角色排序，管理员和老师在前，学生按学号排序
     users = User.query.order_by(User.role.asc(), User.username.asc()).all()
     
     all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
@@ -156,7 +156,7 @@ def admin():
 def delete_user(user_id):
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     user = User.query.get(user_id)
-    if user and user.username != 'admin' and user.username != current_user.username: # 防止删自己
+    if user and user.username != 'admin' and user.username != current_user.username:
         db.session.delete(user)
         db.session.commit()
         flash(f'用户 {user.name} 已删除', 'success')
@@ -168,13 +168,40 @@ def delete_assignment(id):
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     a = Assignment.query.get(id)
     if a:
-        for sub in Submission.query.filter_by(assignment_id=id).all():
+        subs = Submission.query.filter_by(assignment_id=id).all()
+        # 核心防护：如果当前有文件，且数量大于最后下载时的数量，说明有未备份文件
+        if len(subs) > 0 and len(subs) > a.last_download_count:
+            flash('🚨 危险操作被拦截：该作业还有未打包下载的文件，为防止数据丢失，禁止删除！请先打包下载。', 'error')
+            return redirect(url_for('admin'))
+
+        for sub in subs:
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
             if os.path.exists(filepath): os.remove(filepath)
             db.session.delete(sub)
         db.session.delete(a)
         db.session.commit()
         flash('作业及所有提交文件已彻底删除', 'success')
+    return redirect(url_for('admin'))
+
+@app.route('/admin/clear_files/<int:assignment_id>')
+@login_required
+def clear_files(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    subs = Submission.query.filter_by(assignment_id=assignment_id).all()
+    count = 0
+    
+    # 核心防护：如果有未备份文件，拦截清空操作
+    if len(subs) > a.last_download_count:
+        flash('🚨 危险操作被拦截：该作业还有未打包下载的文件，为防止数据丢失，禁止清空！请先打包下载。', 'error')
+        return redirect(url_for('admin'))
+
+    for sub in subs:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            count += 1
+    flash(f'已清空 {count} 个物理文件，已交名单和记录已保留！', 'success')
     return redirect(url_for('admin'))
 
 @app.route('/admin/toggle_assignment/<int:id>')
@@ -198,7 +225,7 @@ def delete_submission(submission_id):
         if os.path.exists(filepath): os.remove(filepath)
         db.session.delete(sub)
         db.session.commit()
-        flash(f'已删除 {sub.student_name} 的提交，学生可重新上传。', 'success')
+        flash(f'已删除 {sub.student_name} 的提交记录和文件。', 'success')
     return redirect(request.referrer or url_for('admin'))
 
 @app.route('/teacher')
@@ -301,6 +328,10 @@ def download_zip(assignment_id):
         flash('该作业暂无学生提交，无法打包。', 'error')
         return redirect(request.referrer)
 
+    # 关键：打包下载时，更新已备份的文件数量
+    assignment.last_download_count = len(subs)
+    db.session.commit()
+
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
@@ -320,6 +351,18 @@ def download_zip(assignment_id):
 
 with app.app_context():
     db.create_all()
+    # 自动兼容旧数据库：如果缺少 last_download_count 字段，则自动添加
+    db_path = os.path.join(DATA_DIR, 'database.db')
+    if os.path.exists(db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(assignment)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'last_download_count' not in columns:
+            cursor.execute("ALTER TABLE assignment ADD COLUMN last_download_count INTEGER DEFAULT 0")
+            conn.commit()
+        conn.close()
+
     if not User.query.filter_by(username='admin').first():
         db.session.add(User(username='admin', password_hash=generate_password_hash('admin123'), role='admin', name='超级管理员'))
         db.session.commit()

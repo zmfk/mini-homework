@@ -64,7 +64,6 @@
                         <p class="text-xs text-gray-500 truncate">{{ user.username }} ({{ user.role }})</p>
                     </div>
                     <div class="flex items-center space-x-1 flex-shrink-0">
-                        <!-- 只有普通学生才显示重置学号 -->
                         {% if user.role == 'student' %}
                         <form method="POST" class="inline">
                             <input type="hidden" name="change_password" value="1">
@@ -74,7 +73,6 @@
                         </form>
                         {% endif %}
 
-                        <!-- 使用 data-* 属性传值，解决编辑器报错问题 -->
                         <form method="POST" class="inline" id="changeForm-{{ user.id }}">
                             <input type="hidden" name="change_password" value="1">
                             <input type="hidden" name="user_id" value="{{ user.id }}">
@@ -111,7 +109,13 @@
             <div class="p-6 border-b border-gray-100">
                 <div class="flex justify-between items-start">
                     <div>
-                        <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{{ a.title }}</h3>
+                        <h3 class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                            {{ a.title }}
+                            <!-- 前端视觉提示：有新文件未备份 -->
+                            {% if stats[a.id].total > a.last_download_count %}
+                                <span class="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded">⚠️ 有新文件未备份</span>
+                            {% endif %}
+                        </h3>
                         <div class="flex items-center space-x-4 mt-2 text-sm text-gray-500">
                             <span class="flex items-center">
                                 <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -133,14 +137,16 @@
                             <span class="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-700 rounded-full border border-blue-200">进行中</span>
                         {% endif %}
                         
-                        <div class="flex space-x-3 text-sm font-medium bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                        <div class="flex flex-wrap justify-end gap-2 text-sm font-medium bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
                             <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center">打包下载</a>
                             <span class="text-gray-300">|</span>
                             <a href="/admin/toggle_assignment/{{ a.id }}" class="text-orange-500 hover:text-orange-700 hover:underline">
                                 {% if a.is_active %}关闭{% else %}唤出{% endif %}
                             </a>
                             <span class="text-gray-300">|</span>
-                            <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('警告：确定删除整个作业吗？')" class="text-red-500 hover:text-red-700 hover:underline">删除作业</a>
+                            <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空该作业下的所有物理文件吗？(名单将保留)')" class="text-purple-600 hover:text-purple-800 hover:underline">清空文件</a>
+                            <span class="text-gray-300">|</span>
+                            <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('警告：确定彻底删除整个作业吗？(名单也会被删掉)')" class="text-red-500 hover:text-red-700 hover:underline">删除作业</a>
                         </div>
                     </div>
                 </div>
@@ -161,7 +167,7 @@
                             </div>
                             <div class="flex items-center space-x-2">
                                 <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium bg-white px-2 py-1 rounded border border-gray-200">下载</a>
-                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
+                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交记录和文件吗？')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded border border-red-200 text-xs font-medium">删除</a>
                             </div>
                         </li>
                         {% else %}
@@ -210,7 +216,6 @@
         }
     });
 
-    // 接收整个按钮对象作为参数
     function promptChangePassword(btn) {
         const userId = btn.dataset.userId;
         const userName = btn.dataset.userName;
