@@ -44,16 +44,18 @@
             <!-- 上传区域 -->
             <div class="w-full md:w-80 flex-shrink-0">
                 {% if not is_expired and not sub %}
-                <form class="flex flex-col space-y-3 submit-form" data-assignment-id="{{ a.id }}">
+                <form method="POST" enctype="multipart/form-data" class="flex flex-col space-y-3 submit-form">
+                    <input type="hidden" name="assignment_id" value="{{ a.id }}">
                     <div class="relative border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition-colors group cursor-pointer text-center p-4">
-                        <input type="file" name="file" accept=".pdf,.docx" required 
+                        <!-- 修改了 accept，允许 doc -->
+                        <input type="file" name="file" accept=".pdf,.doc,.docx" required 
                                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
                                id="file-input-{{ a.id }}" 
                                onchange="updateFileName(this, 'file-text-{{ a.id }}')">
                         <div class="pointer-events-none flex flex-col items-center justify-center">
                             <svg class="w-6 h-6 text-gray-400 group-hover:text-blue-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                             <span id="file-text-{{ a.id }}" class="text-xs text-gray-500 group-hover:text-blue-600 font-medium line-clamp-2 px-2 break-all">
-                                点击选择文件 (PDF/DOCX)
+                                点击选择文件 (PDF/DOC/DOCX)
                             </span>
                         </div>
                     </div>
@@ -92,14 +94,12 @@
         }
     }
 
-    let isSubmitting = false;
-
     // 2. 使用 AJAX 无刷新提交表单
     document.querySelectorAll('.submit-form').forEach(form => {
         form.addEventListener('submit', async function(e) {
-            e.preventDefault(); // 阻止原生表单跳转刷新
+            e.preventDefault(); 
             
-            const assignmentId = this.getAttribute('data-assignment-id');
+            const assignmentId = this.querySelector('input[name="assignment_id"]').value;
             const fileInput = this.querySelector('input[type="file"]');
             const btn = this.querySelector('button[type="submit"]');
             
@@ -108,9 +108,8 @@
                 return;
             }
 
-            isSubmitting = true; // 标记正在上传
+            let isSubmitting = true; 
             
-            // 改变按钮样式为“正在上传”
             if (btn) {
                 btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 正在上传...';
                 btn.disabled = true; 
@@ -118,24 +117,21 @@
                 btn.classList.add('opacity-80', 'cursor-not-allowed');
             }
 
-            // 打包数据
             const formData = new FormData();
             formData.append('assignment_id', assignmentId);
             formData.append('file', fileInput.files[0]);
 
             try {
-                // 发送 AJAX 请求
                 const response = await fetch('/student', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (response.ok) {
-                    isSubmitting = false; // ★ 关键修复：解除锁定，防止刷新时触发拦截弹窗
-                    window.location.reload(); // 上传成功，刷新页面以显示最新状态
+                    isSubmitting = false;
+                    window.location.reload();
                 } else {
                     alert("上传失败，请重试");
-                    // 恢复按钮状态
                     isSubmitting = false;
                     btn.innerHTML = '确认提交';
                     btn.disabled = false;
@@ -153,8 +149,9 @@
         });
     });
 
-    // 3. 保留防关闭拦截（仅在真正上传中时触发）
+    // 3. 防关闭拦截
     window.addEventListener('beforeunload', function(e) {
+        const isSubmitting = document.querySelector('button[type="submit"]:disabled');
         if (isSubmitting) {
             e.preventDefault();
             e.returnValue = '文件正在上传中，关闭页面将导致提交失败！';

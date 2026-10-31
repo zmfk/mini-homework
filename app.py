@@ -53,7 +53,7 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# 辅助函数：获取 PythonAnywhere CPU 数据，磁盘数据固定为 4.4MB
+# 辅助函数：获取 PythonAnywhere CPU 数据，并计算应用自身目录大小
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
     username = os.environ.get('PA_USERNAME')
@@ -72,7 +72,7 @@ def get_pa_stats():
     cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
     cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
     
-    # 核心修改：直接固定磁盘占用为 4.4 MB
+    # 固定磁盘占用显示
     app_disk_usage = 4.4
     disk_limit = 512.0
     disk_pct = round((app_disk_usage / disk_limit) * 100, 1)
@@ -332,9 +332,11 @@ def student():
             flash('该作业已截止提交！', 'error')
             return redirect(url_for('student'))
 
-        if file and file.filename.lower().endswith(('.pdf', '.docx')):
+        # 核心修改：允许 .doc 格式
+        if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
             
+            # .docx 依然进行宏检测
             if ext == '.docx':
                 try:
                     with zipfile.ZipFile(file.stream) as zf:
@@ -363,7 +365,7 @@ def student():
             db.session.commit()
             flash('作业提交成功！', 'success')
         else:
-            flash('只支持上传 PDF 或 DOCX 格式！', 'error')
+            flash('只支持上传 PDF, DOC, DOCX 格式！', 'error')
             
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     my_subs = {s.assignment_id: s for s in Submission.query.filter_by(student_id=current_user.username).all()}
