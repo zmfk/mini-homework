@@ -53,7 +53,6 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# 辅助函数：获取 PythonAnywhere CPU 数据，并计算应用自身目录大小
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
     username = os.environ.get('PA_USERNAME')
@@ -72,7 +71,6 @@ def get_pa_stats():
     cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
     cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
     
-    # 固定磁盘占用显示
     app_disk_usage = 4.4
     disk_limit = 512.0
     disk_pct = round((app_disk_usage / disk_limit) * 100, 1)
@@ -82,7 +80,6 @@ def get_pa_stats():
         'cpu_limit': cpu_limit,
         'cpu_pct': cpu_pct,
         'cpu_color': 'bg-red-500' if cpu_pct > 70 else 'bg-yellow-400' if cpu_pct > 40 else 'bg-green-500',
-        
         'disk_usage': app_disk_usage,
         'disk_limit': disk_limit,
         'disk_pct': disk_pct,
@@ -199,6 +196,11 @@ def admin():
             sub.file_exists = os.path.exists(filepath)
             
         stats[a.id] = {'total': len(subs), 'files': [s.file_name for s in subs]}
+        
+        # 核心修改：按学号进行升序排序
+        subs.sort(key=lambda x: x.student_id)
+        not_submitted.sort(key=lambda x: x.username)
+        
         report[a.id] = {'submitted': subs, 'not_submitted': not_submitted}
         
         if datetime.now() > a.deadline and len(subs) > 0 and len(subs) > a.last_download_count:
@@ -311,6 +313,10 @@ def teacher():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
             sub.file_exists = os.path.exists(filepath)
             
+        # 核心修改：老师端同样按学号排序
+        sub_list.sort(key=lambda x: x.student_id)
+        not_submitted.sort(key=lambda x: x.username)
+            
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
         
     current_total_subs = Submission.query.count()
@@ -332,11 +338,9 @@ def student():
             flash('该作业已截止提交！', 'error')
             return redirect(url_for('student'))
 
-        # 核心修改：允许 .doc 格式
         if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
             
-            # .docx 依然进行宏检测
             if ext == '.docx':
                 try:
                     with zipfile.ZipFile(file.stream) as zf:
