@@ -47,7 +47,6 @@
                 <form method="POST" enctype="multipart/form-data" class="flex flex-col space-y-3 submit-form">
                     <input type="hidden" name="assignment_id" value="{{ a.id }}">
                     <div class="relative border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-blue-50 hover:border-blue-400 transition-colors group cursor-pointer text-center p-4">
-                        <!-- 修改了 accept，允许 doc -->
                         <input type="file" name="file" accept=".pdf,.doc,.docx" required 
                                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
                                id="file-input-{{ a.id }}" 
@@ -81,7 +80,7 @@
 </div>
 
 <script>
-    // 1. 实时显示选中的文件名
+    // 实时显示选中的文件名
     function updateFileName(input, textId) {
         if (input.files && input.files.length > 0) {
             const fileName = input.files[0].name;
@@ -94,7 +93,10 @@
         }
     }
 
-    // 2. 使用 AJAX 无刷新提交表单
+    // 使用全局变量标记上传状态
+    let isUploading = false;
+
+    // 使用 AJAX 无刷新提交表单
     document.querySelectorAll('.submit-form').forEach(form => {
         form.addEventListener('submit', async function(e) {
             e.preventDefault(); 
@@ -108,7 +110,7 @@
                 return;
             }
 
-            let isSubmitting = true; 
+            isUploading = true; // 标记正在上传
             
             if (btn) {
                 btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 正在上传...';
@@ -128,11 +130,12 @@
                 });
 
                 if (response.ok) {
-                    isSubmitting = false;
+                    isUploading = false; // ★ 关键修复：刷新前解除上传状态锁定
+                    if (btn) btn.disabled = false; // 恢复按钮（虽然马上要刷新了）
                     window.location.reload();
                 } else {
                     alert("上传失败，请重试");
-                    isSubmitting = false;
+                    isUploading = false;
                     btn.innerHTML = '确认提交';
                     btn.disabled = false;
                     btn.classList.add('hover:bg-blue-700', 'active:scale-[0.98]');
@@ -140,7 +143,7 @@
                 }
             } catch (error) {
                 alert("网络错误，请检查网络后重试！");
-                isSubmitting = false;
+                isUploading = false;
                 btn.innerHTML = '确认提交';
                 btn.disabled = false;
                 btn.classList.add('hover:bg-blue-700', 'active:scale-[0.98]');
@@ -149,10 +152,9 @@
         });
     });
 
-    // 3. 防关闭拦截
+    // 防关闭拦截：只依赖全局变量 isUploading
     window.addEventListener('beforeunload', function(e) {
-        const isSubmitting = document.querySelector('button[type="submit"]:disabled');
-        if (isSubmitting) {
+        if (isUploading) {
             e.preventDefault();
             e.returnValue = '文件正在上传中，关闭页面将导致提交失败！';
             return e.returnValue;
