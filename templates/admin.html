@@ -147,18 +147,30 @@
                                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                     已交 {{ stats[a.id].total }} 人
                                 </span>
-                                <!-- 核心修复：仅当已截止且未备份时才显示 -->
                                 {% if now > a.deadline and stats[a.id].total > a.last_download_count %}
                                     <span class="text-[10px] font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">⚠️ 未备份</span>
                                 {% endif %}
                             </div>
                             
-                            <div class="flex flex-wrap gap-x-2 gap-y-1 text-xs font-medium mt-1">
+                            <!-- 操作栏，增加了改时间与强制截止 -->
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-medium mt-1">
                                 <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:underline">打包下载</a>
                                 <span class="text-gray-300">|</span>
                                 <a href="/admin/toggle_assignment/{{ a.id }}" class="text-orange-500 hover:underline">
                                     {% if a.is_active %}关闭{% else %}唤出{% endif %}
                                 </a>
+                                <span class="text-gray-300">|</span>
+                                <a href="/admin/force_close/{{ a.id }}" onclick="return confirm('确定强制截止该作业吗？')" class="text-red-500 hover:underline">强制截止</a>
+                                <span class="text-gray-300">|</span>
+                                
+                                <!-- 修改时间的小表单 -->
+                                <form method="POST" action="/admin/update_deadline/{{ a.id }}" class="inline-flex items-center space-x-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                                    <input type="datetime-local" name="new_deadline" required 
+                                           value="{{ a.deadline.strftime('%Y-%m-%dT%H:%M') }}"
+                                           class="text-[11px] bg-transparent border-none outline-none w-32 p-0 cursor-pointer text-gray-600">
+                                    <button type="submit" class="text-orange-500 hover:text-orange-700">改时间</button>
+                                </form>
+
                                 <span class="text-gray-300">|</span>
                                 <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空文件吗？(保留名单)')" class="text-purple-600 hover:underline">清空文件</a>
                                 <span class="text-gray-300">|</span>
