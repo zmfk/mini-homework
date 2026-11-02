@@ -2,7 +2,7 @@ import os
 import io
 import zipfile
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -52,6 +52,10 @@ class Submission(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+# 强制使用北京时间 (UTC+8)
+def get_bj_time():
+    return datetime.utcnow() + timedelta(hours=8)
 
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
@@ -186,6 +190,8 @@ def admin():
     report = {}
     need_backup = []
     
+    now_bj = get_bj_time() # 使用北京时间判定
+    
     for a in assignments:
         subs = Submission.query.filter_by(assignment_id=a.id).all()
         submitted_ids = [s.student_id for s in subs]
@@ -197,13 +203,12 @@ def admin():
             
         stats[a.id] = {'total': len(subs), 'files': [s.file_name for s in subs]}
         
-        # 核心修改：按学号进行升序排序
         subs.sort(key=lambda x: x.student_id)
         not_submitted.sort(key=lambda x: x.username)
         
         report[a.id] = {'submitted': subs, 'not_submitted': not_submitted}
         
-        if datetime.now() > a.deadline and len(subs) > 0 and len(subs) > a.last_download_count:
+        if now_bj > a.deadline and len(subs) > 0 and len(subs) > a.last_download_count:
             need_backup.append(a.title)
 
     pa_stats = get_pa_stats()
@@ -214,7 +219,7 @@ def admin():
                            assignments=assignments, 
                            stats=stats, 
                            report=report, 
-                           now=datetime.now(),
+                           now=now_bj, # 将北京时间传给前端
                            need_backup=need_backup,
                            current_total_subs=current_total_subs,
                            pa_stats=pa_stats)
@@ -303,6 +308,7 @@ def teacher():
     
     all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
     
+    now_bj = get_bj_time() # 使用北京时间判定
     report = {}
     for a in assignments:
         sub_list = [s for s in submissions if s.assignment_id == a.id]
@@ -313,14 +319,13 @@ def teacher():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
             sub.file_exists = os.path.exists(filepath)
             
-        # 核心修改：老师端同样按学号排序
         sub_list.sort(key=lambda x: x.student_id)
         not_submitted.sort(key=lambda x: x.username)
             
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
         
     current_total_subs = Submission.query.count()
-    return render_template('teacher.html', assignments=assignments, report=report, now=datetime.now(), current_total_subs=current_total_subs)
+    return render_template('teacher.html', assignments=assignments, report=report, now=now_bj, current_total_subs=current_total_subs)
 
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
@@ -334,7 +339,8 @@ def student():
         file = request.files.get('file')
         assignment = Assignment.query.get(assignment_id)
         
-        if not assignment or (datetime.now() > assignment.deadline and not assignment.is_active):
+        now_bj = get_bj_time() # 使用北京时间判定
+        if not assignment or (now_bj > assignment.deadline and not assignment.is_active):
             flash('该作业已截止提交！', 'error')
             return redirect(url_for('student'))
 
@@ -373,7 +379,7 @@ def student():
             
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     my_subs = {s.assignment_id: s for s in Submission.query.filter_by(student_id=current_user.username).all()}
-    return render_template('student.html', assignments=assignments, my_subs=my_subs, now=datetime.now())
+    return render_template('student.html', assignments=assignments, my_subs=my_subs, now=get_bj_time())
 
 @app.route('/student/delete/<int:assignment_id>')
 @login_required
