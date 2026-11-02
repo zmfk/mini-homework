@@ -53,7 +53,6 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# 强制使用北京时间 (UTC+8)
 def get_bj_time():
     return datetime.utcnow() + timedelta(hours=8)
 
@@ -190,7 +189,7 @@ def admin():
     report = {}
     need_backup = []
     
-    now_bj = get_bj_time() # 使用北京时间判定
+    now_bj = get_bj_time()
     
     for a in assignments:
         subs = Submission.query.filter_by(assignment_id=a.id).all()
@@ -219,7 +218,7 @@ def admin():
                            assignments=assignments, 
                            stats=stats, 
                            report=report, 
-                           now=now_bj, # 将北京时间传给前端
+                           now=now_bj,
                            need_backup=need_backup,
                            current_total_subs=current_total_subs,
                            pa_stats=pa_stats)
@@ -286,6 +285,36 @@ def toggle_assignment(id):
         flash(f'作业 [{a.title}] 状态已切换', 'success')
     return redirect(url_for('admin'))
 
+# 新增：强制截止
+@app.route('/admin/force_close/<int:assignment_id>')
+@login_required
+def force_close(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    if a:
+        a.is_active = False
+        a.deadline = get_bj_time() - timedelta(minutes=1)
+        db.session.commit()
+        flash(f'作业 [{a.title}] 已强制截止', 'success')
+    return redirect(url_for('admin'))
+
+# 新增：修改截止时间
+@app.route('/admin/update_deadline/<int:assignment_id>', methods=['POST'])
+@login_required
+def update_deadline(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    new_time_str = request.form.get('new_deadline')
+    if a and new_time_str:
+        try:
+            new_time = datetime.strptime(new_time_str, '%Y-%m-%dT%H:%M')
+            a.deadline = new_time
+            db.session.commit()
+            flash(f'作业 [{a.title}] 截止时间已更新', 'success')
+        except Exception:
+            flash('时间格式错误，更新失败', 'error')
+    return redirect(url_for('admin'))
+
 @app.route('/admin/delete_submission/<int:submission_id>')
 @login_required
 def delete_submission(submission_id):
@@ -308,7 +337,7 @@ def teacher():
     
     all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
     
-    now_bj = get_bj_time() # 使用北京时间判定
+    now_bj = get_bj_time()
     report = {}
     for a in assignments:
         sub_list = [s for s in submissions if s.assignment_id == a.id]
@@ -339,7 +368,7 @@ def student():
         file = request.files.get('file')
         assignment = Assignment.query.get(assignment_id)
         
-        now_bj = get_bj_time() # 使用北京时间判定
+        now_bj = get_bj_time()
         if not assignment or (now_bj > assignment.deadline and not assignment.is_active):
             flash('该作业已截止提交！', 'error')
             return redirect(url_for('student'))
