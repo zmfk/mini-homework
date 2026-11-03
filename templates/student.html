@@ -8,7 +8,8 @@
     
     <div class="space-y-5">
         {% for a in assignments %}
-        {% set is_expired = now > a.deadline and not a.is_active %}
+        <!-- 核心修改：加上强制截止判断 -->
+        {% set is_expired = a.is_forced_closed or (now > a.deadline and not a.is_active) %}
         {% set sub = my_subs.get(a.id) %}
         
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-shadow hover:shadow-md">
@@ -80,7 +81,6 @@
 </div>
 
 <script>
-    // 实时显示选中的文件名
     function updateFileName(input, textId) {
         if (input.files && input.files.length > 0) {
             const fileName = input.files[0].name;
@@ -93,10 +93,8 @@
         }
     }
 
-    // 使用全局变量标记上传状态
     let isUploading = false;
 
-    // 使用 AJAX 无刷新提交表单
     document.querySelectorAll('.submit-form').forEach(form => {
         form.addEventListener('submit', async function(e) {
             e.preventDefault(); 
@@ -110,7 +108,7 @@
                 return;
             }
 
-            isUploading = true; // 标记正在上传
+            isUploading = true; 
             
             if (btn) {
                 btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 正在上传...';
@@ -130,8 +128,8 @@
                 });
 
                 if (response.ok) {
-                    isUploading = false; // ★ 关键修复：刷新前解除上传状态锁定
-                    if (btn) btn.disabled = false; // 恢复按钮（虽然马上要刷新了）
+                    isUploading = false;
+                    if (btn) btn.disabled = false;
                     window.location.reload();
                 } else {
                     alert("上传失败，请重试");
@@ -152,7 +150,6 @@
         });
     });
 
-    // 防关闭拦截：只依赖全局变量 isUploading
     window.addEventListener('beforeunload', function(e) {
         if (isUploading) {
             e.preventDefault();
