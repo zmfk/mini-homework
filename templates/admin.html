@@ -149,7 +149,6 @@
                                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                     已交 {{ stats[a.id].total }} 人
                                 </span>
-                                <!-- 未备份角标 -->
                                 {% if (a.is_forced_closed or now > a.deadline) and stats[a.id].total > a.last_download_count %}
                                     <span class="text-[10px] font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">⚠️ 未备份</span>
                                 {% endif %}
@@ -163,7 +162,13 @@
                                     {% if a.is_active %}关闭{% else %}唤出{% endif %}
                                 </a>
                                 <span class="text-gray-300">|</span>
-                                <a href="/admin/force_close/{{ a.id }}" onclick="return confirm('确定强制截止该作业吗？')" class="text-red-500 hover:underline">强制截止</a>
+                                
+                                <!-- 核心修改：根据强制截止状态显示不同的操作 -->
+                                {% if a.is_forced_closed %}
+                                    <a href="/admin/cancel_force_close/{{ a.id }}" onclick="return confirm('确定解除强制截止并恢复时间判断吗？')" class="text-green-600 hover:underline">解除截止</a>
+                                {% else %}
+                                    <a href="/admin/force_close/{{ a.id }}" onclick="return confirm('确定强制截止该作业吗？')" class="text-red-500 hover:underline">强制截止</a>
+                                {% endif %}
                                 <span class="text-gray-300">|</span>
                                 
                                 <!-- 修改时间 -->

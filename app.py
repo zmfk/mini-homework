@@ -40,7 +40,7 @@ class Assignment(db.Model):
     title = db.Column(db.String(100), nullable=False)
     deadline = db.Column(db.DateTime, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
-    is_forced_closed = db.Column(db.Boolean, default=False) # 新增：强制截止开关
+    is_forced_closed = db.Column(db.Boolean, default=False) 
     last_download_count = db.Column(db.Integer, default=0)
 
 class Submission(db.Model):
@@ -209,7 +209,6 @@ def admin():
         
         report[a.id] = {'submitted': subs, 'not_submitted': not_submitted}
         
-        # 截止判断：强制截止 OR (时间过了 且 没被强制开放)
         is_closed = a.is_forced_closed or (now_bj > a.deadline and not a.is_active)
         if is_closed and len(subs) > 0 and len(subs) > a.last_download_count:
             need_backup.append(a.title)
@@ -288,7 +287,7 @@ def toggle_assignment(id):
             a.is_active = False
         else:
             a.is_active = True
-            a.is_forced_closed = False # 强制开放时，解除强制截止状态
+            a.is_forced_closed = False 
         db.session.commit()
         flash(f'作业 [{a.title}] 状态已切换', 'success')
     return redirect(url_for('admin'))
@@ -305,6 +304,18 @@ def force_close(assignment_id):
         flash(f'作业 [{a.title}] 已强制截止', 'success')
     return redirect(url_for('admin'))
 
+# 新增：解除强制截止
+@app.route('/admin/cancel_force_close/<int:assignment_id>')
+@login_required
+def cancel_force_close(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    if a:
+        a.is_forced_closed = False
+        db.session.commit()
+        flash(f'作业 [{a.title}] 已解除强制截止，恢复按时间判断', 'success')
+    return redirect(url_for('admin'))
+
 @app.route('/admin/update_deadline/<int:assignment_id>', methods=['POST'])
 @login_required
 def update_deadline(assignment_id):
@@ -315,7 +326,7 @@ def update_deadline(assignment_id):
         try:
             new_time = datetime.strptime(new_time_str, '%Y-%m-%dT%H:%M')
             a.deadline = new_time
-            a.is_forced_closed = False # 修改时间后，解除强制截止
+            a.is_forced_closed = False 
             db.session.commit()
             flash(f'作业 [{a.title}] 截止时间已更新', 'success')
         except Exception:
@@ -376,7 +387,6 @@ def student():
         assignment = Assignment.query.get(assignment_id)
         
         now_bj = get_bj_time()
-        # 强制截止 或者 时间过了且没被强制开放
         if not assignment or assignment.is_forced_closed or (now_bj > assignment.deadline and not assignment.is_active):
             flash('该作业已截止提交！', 'error')
             return redirect(url_for('student'))
@@ -470,7 +480,6 @@ def download_zip(assignment_id):
 with app.app_context():
     db.create_all()
     
-    # 自动兼容旧数据库：增加 is_forced_closed 字段
     db_path = os.path.join(DATA_DIR, 'database.db')
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
