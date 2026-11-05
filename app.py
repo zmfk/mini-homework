@@ -11,14 +11,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-# 安全加固 1：从环境变量读取 SECRET_KEY，如果没有则生成随机密钥
-# 注意：如果在本地，每次重启服务会导致登录失效。云端请在环境变量配置 SECRET_KEY。
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
-
-# 安全加固 2：设置 Cookie 安全属性
-app.config['SESSION_COOKIE_HTTPONLY'] = True   # 防止 JS 读取 Cookie
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # 缓解 CSRF
-# app.config['SESSION_COOKIE_SECURE'] = True   # 如果你强制全站 HTTPS，请取消注释这行
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
@@ -36,13 +31,11 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# 安全加固 3：全局响应头，防止 XSS 和点击劫持
 @app.after_request
 def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
-    # 强制浏览器使用 HTTPS (1年)
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
 
@@ -60,6 +53,7 @@ class Assignment(db.Model):
     deadline = db.Column(db.DateTime, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
     is_forced_closed = db.Column(db.Boolean, default=False) 
+    is_archived = db.Column(db.Boolean, default=False) # 新增：是否归档
     last_download_count = db.Column(db.Integer, default=0)
     class_name = db.Column(db.String(50), default='全部班级')
 
@@ -187,9 +181,12 @@ def admin():
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
-        target_class = request.form.get('target_class', '全部班级').strip()
-        if not target_class: target_class = '全部班级'
+        target_class = request.form.get('target_class', '').strip()
         
+        if not target_class:
+            flash('发布失败：目标班级不能为空！如果要发给所有人，请填“全部班级”。', 'error')
+            return redirect(url_for('admin'))
+
         if title and deadline_str:
             deadline = datetime.strptime(deadline_str, '%Y-%m-%dT%H:%M')
             db.session.add(Assignment(title=title, deadline=deadline, class_name=target_class))
@@ -257,6 +254,7 @@ def admin():
     users = User.query.order_by(User.role.asc(), User.class_name.asc(), User.username.asc()).all()
     
     all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
+    student_class_map = {u.username: u.class_name for u in users if u.role in ['student', 'admin'] and u.username != 'admin'}
     
     stats = {}
     report = {}
@@ -267,6 +265,11 @@ def admin():
         subs = Submission.query.filter_by(assignment_id=a.id).all()
         submitted_ids = [s.student_id for s in subs]
         
+        for sub in subs:
+            sub.class_name = student_class_map.get(sub.student_id, '默认班级')
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+            sub.file_exists = os.path.exists(filepath)
+        
         if a.class_name == '全部班级':
             target_students = [u for u in users if u.role in ['student', 'admin'] and u.username != 'admin']
         else:
@@ -274,14 +277,10 @@ def admin():
             
         not_submitted = [s for s in target_students if s.username not in submitted_ids]
         
-        for sub in subs:
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
-            sub.file_exists = os.path.exists(filepath)
-            
         stats[a.id] = {'total': len(subs), 'files': [s.file_name for s in subs]}
         
-        subs.sort(key=lambda x: x.student_id)
-        not_submitted.sort(key=lambda x: x.username)
+        subs.sort(key=lambda x: (x.class_name, x.student_id))
+        not_submitted.sort(key=lambda x: (x.class_name, x.username))
         
         report[a.id] = {'submitted': subs, 'not_submitted': not_submitted}
         
@@ -302,6 +301,18 @@ def admin():
                            current_total_subs=current_total_subs,
                            pa_stats=pa_stats,
                            all_classes=all_classes)
+
+@app.route('/admin/toggle_archive/<int:assignment_id>')
+@login_required
+def toggle_archive(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    if a:
+        a.is_archived = not a.is_archived
+        db.session.commit()
+        status = "已归档" if a.is_archived else "已取消归档"
+        flash(f'作业 [{a.title}] {status}', 'success')
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/delete_user/<int:user_id>')
 @login_required
@@ -444,12 +455,19 @@ def teacher():
     submissions = Submission.query.all()
     
     all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
+    student_class_map = {u.username: u.class_name for u in all_students}
+    all_classes = sorted(list(set([u.class_name for u in all_students if u.class_name])))
     
     now_bj = get_bj_time()
     report = {}
     for a in assignments:
         sub_list = [s for s in submissions if s.assignment_id == a.id]
         submitted_ids = [s.student_id for s in sub_list]
+        
+        for sub in sub_list:
+            sub.class_name = student_class_map.get(sub.student_id, '默认班级')
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+            sub.file_exists = os.path.exists(filepath)
         
         if a.class_name == '全部班级':
             target_students = all_students
@@ -458,17 +476,13 @@ def teacher():
             
         not_submitted = [s for s in target_students if s.username not in submitted_ids]
         
-        for sub in sub_list:
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
-            sub.file_exists = os.path.exists(filepath)
-            
-        sub_list.sort(key=lambda x: x.student_id)
-        not_submitted.sort(key=lambda x: x.username)
+        sub_list.sort(key=lambda x: (x.class_name, x.student_id))
+        not_submitted.sort(key=lambda x: (x.class_name, x.username))
             
         report[a.id] = {'submitted': sub_list, 'not_submitted': not_submitted}
         
     current_total_subs = Submission.query.count()
-    return render_template('teacher.html', assignments=assignments, report=report, now=now_bj, current_total_subs=current_total_subs)
+    return render_template('teacher.html', assignments=assignments, report=report, now=now_bj, current_total_subs=current_total_subs, all_classes=all_classes)
 
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
@@ -544,27 +558,20 @@ def student_delete(assignment_id):
         flash('提交已撤回，你可以重新上传了。', 'success')
     return redirect(url_for('student'))
 
-# ==========================================
-# 安全加固 4：防越权下载（IDOR 漏洞修复）
-# ==========================================
 @app.route('/download/<filename>')
 @login_required
 def download_file(filename):
-    # 1. 基础校验：文件是否存在
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     if not os.path.exists(filepath):
         flash('文件不存在或已被清理！', 'error')
         return redirect(request.referrer or url_for('index'))
 
-    # 2. 权限校验：
-    # 如果是学生，必须在数据库里查到他拥有这个文件名
     if current_user.role not in ['admin', 'teacher']:
         sub = Submission.query.filter_by(student_id=current_user.username, file_name=filename).first()
         if not sub:
             flash('安全拦截：你无权下载其他人的作业！', 'error')
             return redirect(request.referrer or url_for('index'))
 
-    # 3. 如果校验通过，发送文件
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
 @app.route('/download_zip/<int:assignment_id>')
@@ -584,22 +591,39 @@ def download_zip(assignment_id):
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
+        student_class_map = {u.username: u.class_name for u in all_students}
+        
         if assignment.class_name != '全部班级':
             target_students = [s for s in all_students if s.class_name == assignment.class_name]
+            sub_ids = [s.student_id for s in subs]
+            not_sub = [f"{s.username}-{s.name}" for s in target_students if s.username not in sub_ids]
+            
+            list_content = f"【{assignment.title}】(目标: {assignment.class_name})\n\n已交名单({len(subs)}人):\n" + "\n".join([f"{s.student_id}-{s.student_name}" for s in subs])
+            list_content += f"\n\n未交名单({len(not_sub)}人):\n" + "\n".join(not_sub)
+            zf.writestr('名单汇总.txt', list_content.encode('utf-8'))
+            
+            for sub in subs:
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+                if os.path.exists(filepath):
+                    zf.write(filepath, sub.file_name)
         else:
-            target_students = all_students
-
-        sub_ids = [s.student_id for s in subs]
-        not_sub = [f"{s.username}-{s.name}" for s in target_students if s.username not in sub_ids]
-        
-        list_content = f"【{assignment.title}】(目标: {assignment.class_name})\n\n已交名单({len(subs)}人):\n" + "\n".join([f"{s.student_id}-{s.student_name}" for s in subs])
-        list_content += f"\n\n未交名单({len(not_sub)}人):\n" + "\n".join(not_sub)
-        zf.writestr('名单汇总.txt', list_content.encode('utf-8'))
-        
-        for sub in subs:
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
-            if os.path.exists(filepath):
-                zf.write(filepath, sub.file_name)
+            classes_involved = sorted(list(set([u.class_name for u in all_students if u.class_name])))
+            
+            for cls in classes_involved:
+                cls_students = [s for s in all_students if s.class_name == cls]
+                cls_subs = [s for s in subs if student_class_map.get(s.student_id) == cls]
+                cls_sub_ids = [s.student_id for s in cls_subs]
+                cls_not_sub = [f"{s.username}-{s.name}" for s in cls_students if s.username not in cls_sub_ids]
+                
+                cls_list_content = f"【{assignment.title}】- {cls}班\n\n已交名单({len(cls_subs)}人):\n" + "\n".join([f"{s.student_id}-{s.student_name}" for s in cls_subs])
+                cls_list_content += f"\n\n未交名单({len(cls_not_sub)}人):\n" + "\n".join(cls_not_sub)
+                
+                zf.writestr(f"{cls}/名单汇总_{cls}.txt", cls_list_content.encode('utf-8'))
+                
+                for sub in cls_subs:
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+                    if os.path.exists(filepath):
+                        zf.write(filepath, f"{cls}/{sub.file_name}")
                 
     memory_file.seek(0)
     
@@ -629,6 +653,9 @@ with app.app_context():
             conn.commit()
         if 'is_forced_closed' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN is_forced_closed BOOLEAN DEFAULT 0")
+            conn.commit()
+        if 'is_archived' not in assign_columns:
+            cursor.execute("ALTER TABLE assignment ADD COLUMN is_archived BOOLEAN DEFAULT 0")
             conn.commit()
             
         conn.close()
