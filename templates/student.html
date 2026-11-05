@@ -8,7 +8,6 @@
     
     <div class="space-y-5">
         {% for a in assignments %}
-        <!-- 核心修改：加上强制截止判断 -->
         {% set is_expired = a.is_forced_closed or (now > a.deadline and not a.is_active) %}
         {% set sub = my_subs.get(a.id) %}
         

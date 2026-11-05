@@ -48,7 +48,7 @@
                 {% else %}
                 <div class="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
                     <p class="mb-1">无法获取云端实时数据。</p>
-                    <p class="text-[11px] text-gray-400">如果部署在 PythonAnywhere，请配置 <code>PA_TOKEN</code> 和 <code>PA_USERNAME</code> 环境变量。</p>
+                    <p class="text-[11px] text-gray-400">请配置 <code>PA_TOKEN</code> 和 <code>PA_USERNAME</code> 环境变量。</p>
                 </div>
                 {% endif %}
             </div>
@@ -65,6 +65,16 @@
                         <label class="block text-xs font-medium text-gray-700 mb-1">作业名称</label>
                         <input type="text" name="title" placeholder="例如：第一次作业" required 
                                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">目标班级 (留空或填“全部班级”则所有人可见)</label>
+                        <input type="text" name="target_class" list="class-list" placeholder="例如：计科1班" 
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                        <datalist id="class-list">
+                            {% for cls in all_classes %}
+                            <option value="{{ cls }}">
+                            {% endfor %}
+                        </datalist>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">截止时间</label>
@@ -88,13 +98,14 @@
                     <div>
                         <label class="block text-[11px] text-gray-500 mb-1">
                             Excel直接复制，自动跳过表头。<br>
-                            格式：<code>学号 姓名</code> 或 <code>学号 姓名 admin</code>
+                            格式：<code>学号 姓名 班级 [角色]</code><br>
+                            例如：<code>2023001 张三 计科1班</code>
                         </label>
-                        <textarea name="student_data" rows="3" required placeholder="学号&#9;姓名&#9;admin&#10;2023001&#9;张三&#10;T001&#9;王老师&#9;teacher" 
+                        <textarea name="student_data" rows="4" required placeholder="2023001 张三 计科1班&#10;2023002 李四 计科2班&#10;T001 王老师 教师 admin" 
                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-gray-50 focus:bg-white text-xs"></textarea>
                     </div>
                     <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-lg hover:bg-green-700 transition-all shadow-sm text-xs">
-                        批量导入 (默认密码为学号)
+                        批量导入
                     </button>
                 </form>
             </div>
@@ -128,7 +139,12 @@
                     <div class="p-4 border-b border-gray-100">
                         <div class="flex flex-col gap-2">
                             <div class="flex justify-between items-start">
-                                <h3 class="text-base font-bold text-gray-900">{{ a.title }}</h3>
+                                <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+                                    {{ a.title }}
+                                    <span class="px-1.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded">
+                                        🎯 {{ a.class_name }}
+                                    </span>
+                                </h3>
                                 {% if a.is_active %}
                                     <span class="px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded border border-green-200 whitespace-nowrap">强制开放中</span>
                                 {% elif a.is_forced_closed %}
@@ -162,23 +178,18 @@
                                     {% if a.is_active %}关闭{% else %}唤出{% endif %}
                                 </a>
                                 <span class="text-gray-300">|</span>
-                                
-                                <!-- 核心修改：根据强制截止状态显示不同的操作 -->
                                 {% if a.is_forced_closed %}
-                                    <a href="/admin/cancel_force_close/{{ a.id }}" onclick="return confirm('确定解除强制截止并恢复时间判断吗？')" class="text-green-600 hover:underline">解除截止</a>
+                                    <a href="/admin/cancel_force_close/{{ a.id }}" onclick="return confirm('确定解除强制截止吗？')" class="text-green-600 hover:underline">解除截止</a>
                                 {% else %}
                                     <a href="/admin/force_close/{{ a.id }}" onclick="return confirm('确定强制截止该作业吗？')" class="text-red-500 hover:underline">强制截止</a>
                                 {% endif %}
                                 <span class="text-gray-300">|</span>
-                                
-                                <!-- 修改时间 -->
                                 <form method="POST" action="/admin/update_deadline/{{ a.id }}" class="inline-flex items-center space-x-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
                                     <input type="datetime-local" name="new_deadline" required 
                                            value="{{ a.deadline.strftime('%Y-%m-%dT%H:%M') }}"
                                            class="text-[11px] bg-transparent border-none outline-none w-32 p-0 cursor-pointer text-gray-600">
                                     <button type="submit" class="text-orange-500 hover:text-orange-700">改时间</button>
                                 </form>
-
                                 <span class="text-gray-300">|</span>
                                 <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空文件吗？(保留名单)')" class="text-purple-600 hover:underline">清空文件</a>
                                 <span class="text-gray-300">|</span>
@@ -258,7 +269,7 @@
                 <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                     <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
-                <input type="text" id="userSearchInput" placeholder="搜索姓名或学号..." 
+                <input type="text" id="userSearchInput" placeholder="搜索姓名/学号/班级..." 
                        class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
             </div>
             
@@ -266,11 +277,13 @@
             <div class="overflow-y-auto pr-2 space-y-1 flex-grow custom-scrollbar" id="userListContainer">
                 {% for user in users %}
                 <div class="user-item flex flex-col p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100 gap-1.5" 
-                     data-search="{{ user.name|lower }} {{ user.username|lower }}">
+                     data-search="{{ user.name|lower }} {{ user.username|lower }} {{ user.class_name|lower }}">
                     <div class="text-sm flex justify-between items-start">
                         <div class="min-w-0 pr-2">
                             <p class="font-bold text-gray-900 truncate">{{ user.name }}</p>
-                            <p class="text-[11px] text-gray-500 truncate">{{ user.username }} ({{ user.role }})</p>
+                            <p class="text-[11px] text-gray-500 truncate">{{ user.username }} ({{ user.role }}) 
+                                <span class="text-indigo-500 font-medium ml-1">[{{ user.class_name }}]</span>
+                            </p>
                         </div>
                     </div>
                     
