@@ -42,6 +42,19 @@ def add_security_headers(response):
 def get_bj_time():
     return datetime.utcnow() + timedelta(hours=8)
 
+# 辅助函数：计算文件夹真实大小 (MB)
+def get_folder_size(folder_path):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(folder_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if not os.path.islink(fp):
+                try:
+                    total_size += os.path.getsize(fp)
+                except:
+                    pass
+    return round(total_size / (1024 * 1024), 2)
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -53,7 +66,7 @@ class User(UserMixin, db.Model):
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
-    publish_time = db.Column(db.DateTime, default=get_bj_time) # 新增：发布时间
+    publish_time = db.Column(db.DateTime, default=get_bj_time) 
     deadline = db.Column(db.DateTime, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
     is_forced_closed = db.Column(db.Boolean, default=False) 
@@ -91,7 +104,11 @@ def get_pa_stats():
     cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
     cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
     
-    app_disk_usage = 4.4
+    # 动态计算磁盘占用：基础环境 + uploads文件夹大小
+    upload_size = get_folder_size(app.config['UPLOAD_FOLDER'])
+    base_size = 4.0 # 基础系统环境预估占用（Python、Flask、代码等）
+    app_disk_usage = round(base_size + upload_size, 2)
+    
     disk_limit = 512.0
     disk_pct = round((app_disk_usage / disk_limit) * 100, 1)
     
@@ -103,7 +120,7 @@ def get_pa_stats():
         'disk_usage': app_disk_usage,
         'disk_limit': disk_limit,
         'disk_pct': disk_pct,
-        'disk_color': 'bg-green-500',
+        'disk_color': 'bg-red-500' if disk_pct > 80 else 'bg-yellow-400' if disk_pct > 50 else 'bg-green-500',
         'api_connected': bool(token and username)
     }
 
@@ -194,7 +211,7 @@ def admin():
                 title=title, 
                 deadline=deadline, 
                 class_name=target_class,
-                publish_time=get_bj_time() # 显式记录发布时间
+                publish_time=get_bj_time()
             ))
             db.session.commit()
             flash('作业创建成功！', 'success')
@@ -670,10 +687,8 @@ with app.app_context():
         if 'is_archived' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN is_archived BOOLEAN DEFAULT 0")
             conn.commit()
-        # 数据库自动迁移：增加发布时间字段
         if 'publish_time' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN publish_time DATETIME")
-            # 旧数据赋予一个默认值（使用当前时间）
             cursor.execute("UPDATE assignment SET publish_time = CURRENT_TIMESTAMP WHERE publish_time IS NULL")
             conn.commit()
             
