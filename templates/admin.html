@@ -160,9 +160,14 @@
                             </div>
                             
                             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                                <span class="flex items-center">
+                                <!-- 核心修改：显示发布时间 -->
+                                <span class="flex items-center text-gray-400">
+                                    <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                    发布于 {{ a.publish_time.strftime('%m-%d %H:%M') if a.publish_time else '未知' }}
+                                </span>
+                                <span class="flex items-center text-gray-600 font-medium">
                                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                    {{ a.deadline.strftime('%m-%d %H:%M') }}
+                                    截止 {{ a.deadline.strftime('%m-%d %H:%M') }}
                                 </span>
                                 <span class="flex items-center">
                                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -201,13 +206,11 @@
                                    class="text-indigo-600 hover:underline">改班级</a>
                                 
                                 <span class="text-gray-300">|</span>
-                                <!-- 核心修改：归档逻辑控制 -->
                                 {% if a.is_archived %}
                                     <a href="/admin/toggle_archive/{{ a.id }}" class="text-blue-600 hover:underline">取消归档</a>
                                 {% elif a.is_forced_closed or now > a.deadline %}
                                     <a href="/admin/toggle_archive/{{ a.id }}" class="text-gray-500 hover:underline">归档</a>
                                 {% else %}
-                                    <!-- 正在进行中：提示不可归档 -->
                                     <span class="text-gray-300 cursor-not-allowed" title="作业进行中，请先强制截止后再归档">不可归档</span>
                                 {% endif %}
                                 

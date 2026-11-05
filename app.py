@@ -39,6 +39,9 @@ def add_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
 
+def get_bj_time():
+    return datetime.utcnow() + timedelta(hours=8)
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -50,6 +53,7 @@ class User(UserMixin, db.Model):
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
+    publish_time = db.Column(db.DateTime, default=get_bj_time) # 新增：发布时间
     deadline = db.Column(db.DateTime, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
     is_forced_closed = db.Column(db.Boolean, default=False) 
@@ -68,9 +72,6 @@ class Submission(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-
-def get_bj_time():
-    return datetime.utcnow() + timedelta(hours=8)
 
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
@@ -189,7 +190,12 @@ def admin():
 
         if title and deadline_str:
             deadline = datetime.strptime(deadline_str, '%Y-%m-%dT%H:%M')
-            db.session.add(Assignment(title=title, deadline=deadline, class_name=target_class))
+            db.session.add(Assignment(
+                title=title, 
+                deadline=deadline, 
+                class_name=target_class,
+                publish_time=get_bj_time() # 显式记录发布时间
+            ))
             db.session.commit()
             flash('作业创建成功！', 'success')
             
@@ -308,12 +314,11 @@ def toggle_archive(assignment_id):
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     a = Assignment.query.get(assignment_id)
     if a:
-        # 核心拦截：如果是取消归档，随便取消；但如果是归档，必须确保已经截止且没在强制开放
         if not a.is_archived:
             now_bj = get_bj_time()
             is_closed = a.is_forced_closed or (now_bj > a.deadline and not a.is_active)
             if not is_closed:
-                flash('归档失败：该作业目前仍在开放中！请先点击【强制截止】或等待截止时间结束，再进行归档整理。', 'error')
+                flash('🚨 归档失败：该作业目前仍在开放中！请先点击【强制截止】或等待截止时间结束，再进行归档整理。', 'error')
                 return redirect(request.referrer or url_for('admin'))
         
         a.is_archived = not a.is_archived
@@ -664,6 +669,12 @@ with app.app_context():
             conn.commit()
         if 'is_archived' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN is_archived BOOLEAN DEFAULT 0")
+            conn.commit()
+        # 数据库自动迁移：增加发布时间字段
+        if 'publish_time' not in assign_columns:
+            cursor.execute("ALTER TABLE assignment ADD COLUMN publish_time DATETIME")
+            # 旧数据赋予一个默认值（使用当前时间）
+            cursor.execute("UPDATE assignment SET publish_time = CURRENT_TIMESTAMP WHERE publish_time IS NULL")
             conn.commit()
             
         conn.close()
