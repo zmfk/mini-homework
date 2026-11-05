@@ -13,7 +13,7 @@
 
     <div class="space-y-6">
         {% for a in assignments %}
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-shadow hover:shadow-md">
+        <div id="assignment-card-{{ a.id }}" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-shadow hover:shadow-md">
             <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
                 <div>
                     <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -38,16 +38,27 @@
                     打包下载作业与名单
                 </a>
             </div>
+
+            <!-- 班级筛选 Tab (仅全部班级显示) -->
+            {% if a.class_name == '全部班级' and all_classes|length > 0 %}
+            <div class="bg-white px-6 py-3 flex flex-wrap gap-2 items-center border-b border-gray-100">
+                <span class="text-xs font-bold text-gray-500 mr-1">班级筛选:</span>
+                <button class="filter-btn text-xs px-2.5 py-1 rounded-md bg-indigo-600 text-white shadow-sm transition-colors" data-target-class="all" data-card-id="{{ a.id }}">全部</button>
+                {% for cls in all_classes %}
+                <button class="filter-btn text-xs px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors" data-target-class="{{ cls }}" data-card-id="{{ a.id }}">{{ cls }}</button>
+                {% endfor %}
+            </div>
+            {% endif %}
             
             <div class="grid grid-cols-1 md:grid-cols-2 text-sm">
                 <!-- 已交名单 -->
                 <div class="p-6 md:border-r border-gray-100 border-b md:border-b-0">
                     <strong class="text-green-700 block mb-4 flex items-center text-base">
-                        已交学生 ({{ report[a.id].submitted|length }}人)
+                        <span id="submitted-title-{{ a.id }}">已交学生 ({{ report[a.id].submitted|length }}人)</span>
                     </strong>
                     <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                         {% for sub in report[a.id].submitted %}
-                        <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100 group">
+                        <li class="student-item flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100 group" data-class="{{ sub.class_name }}" data-type="submitted">
                             <div class="flex items-center">
                                 <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-2">{{ sub.student_name[0] }}</div>
                                 <span class="font-medium text-gray-800">{{ sub.student_id }} - {{ sub.student_name }}</span>
@@ -70,11 +81,11 @@
                 <!-- 未交名单 -->
                 <div class="p-6 bg-gray-50/30">
                     <strong class="text-red-600 block mb-4 flex items-center text-base">
-                        未交学生 ({{ report[a.id].not_submitted|length }}人)
+                        <span id="not_submitted-title-{{ a.id }}">未交学生 ({{ report[a.id].not_submitted|length }}人)</span>
                     </strong>
                     <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                         {% for stu in report[a.id].not_submitted %}
-                        <li class="flex items-center bg-white p-2.5 rounded-lg border border-red-100">
+                        <li class="student-item flex items-center bg-white p-2.5 rounded-lg border border-red-100" data-class="{{ stu.class_name }}" data-type="not_submitted">
                             <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2">{{ stu.name[0] }}</div>
                             <span class="text-gray-700">{{ stu.username }} - {{ stu.name }}</span>
                         </li>
@@ -93,10 +104,8 @@
     </div>
 </div>
 
-<!-- 隐藏数据容器 -->
 <div id="data-container" data-total-subs="{{ current_total_subs }}" class="hidden"></div>
 
-<!-- 悬浮刷新提示框 -->
 <div id="refresh-toast" class="fixed bottom-8 right-8 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
     <div class="flex items-center">
         <span class="relative flex h-3 w-3 mr-3">
@@ -124,6 +133,47 @@
                 })
                 .catch(() => console.log("检查更新失败"));
         }, 60000); 
+
+        // 班级筛选功能
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const cardId = this.dataset.cardId;
+                const targetClass = this.dataset.targetClass;
+                const btnGroup = this.parentElement.querySelectorAll('.filter-btn');
+                
+                // 切换按钮样式
+                btnGroup.forEach(b => {
+                    b.classList.remove('bg-indigo-600', 'text-white', 'shadow-sm');
+                    b.classList.add('bg-gray-50', 'border', 'border-gray-200', 'text-gray-600', 'hover:bg-gray-100');
+                });
+                this.classList.remove('bg-gray-50', 'border', 'border-gray-200', 'text-gray-600', 'hover:bg-gray-100');
+                this.classList.add('bg-indigo-600', 'text-white', 'shadow-sm');
+
+                // 筛选列表项
+                const card = document.getElementById(`assignment-card-${cardId}`);
+                const items = card.querySelectorAll('.student-item');
+                
+                let submittedCount = 0;
+                let notSubmittedCount = 0;
+                
+                items.forEach(item => {
+                    const isSubmitted = item.dataset.type === 'submitted';
+                    if (targetClass === 'all' || item.dataset.class === targetClass) {
+                        item.style.display = 'flex';
+                        if (isSubmitted) submittedCount++;
+                        else notSubmittedCount++;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+                
+                // 动态更新标题上的数字
+                const submitTitle = card.querySelector(`#submitted-title-${cardId}`);
+                const notSubmitTitle = card.querySelector(`#not_submitted-title-${cardId}`);
+                if (submitTitle) submitTitle.textContent = `已交学生 (${submittedCount}人)`;
+                if (notSubmitTitle) notSubmitTitle.textContent = `未交学生 (${notSubmittedCount}人)`;
+            });
+        });
     });
 </script>
 {% endblock %}

@@ -2,11 +2,9 @@
 {% block content %}
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full lg:h-[calc(100vh-5rem)] lg:overflow-hidden">
     
-    <!-- ==================== 左侧列 (3/12)：表单操作区 ==================== -->
     <div class="lg:col-span-3 flex flex-col min-h-0 pb-4">
         <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar">
             
-            <!-- 动态数据/服务器状态卡片 -->
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-sm font-bold text-gray-900 flex items-center">
@@ -53,7 +51,6 @@
                 {% endif %}
             </div>
 
-            <!-- 发布作业卡片 -->
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
                     <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
@@ -67,10 +64,11 @@
                                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">目标班级 (留空或填“全部班级”则所有人可见)</label>
-                        <input type="text" name="target_class" list="class-list" placeholder="例如：计科1班" 
+                        <label class="block text-xs font-medium text-gray-700 mb-1">目标班级（必填）</label>
+                        <input type="text" name="target_class" list="class-list" placeholder="例如：计科1班 或 全部班级" required
                                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
                         <datalist id="class-list">
+                            <option value="全部班级">
                             {% for cls in all_classes %}
                             <option value="{{ cls }}">
                             {% endfor %}
@@ -87,7 +85,6 @@
                 </form>
             </div>
 
-            <!-- 批量导入学生卡片 -->
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center">
                     <svg class="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
@@ -112,10 +109,8 @@
         </div>
     </div>
 
-    <!-- ==================== 中间列 (6/12)：作业管理看板 ==================== -->
     <div class="lg:col-span-6 flex flex-col min-h-0 pb-4">
         <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar">
-            <!-- 截止下载提醒 -->
             {% if need_backup %}
             <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-r-lg shadow-sm">
                 <h3 class="text-xs font-bold text-yellow-800 mb-1">备份提醒</h3>
@@ -134,8 +129,7 @@
 
             <div class="space-y-5">
                 {% for a in assignments %}
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-                    <!-- 卡片头部 -->
+                <div id="assignment-card-{{ a.id }}" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
                     <div class="p-4 border-b border-gray-100">
                         <div class="flex flex-col gap-2">
                             <div class="flex justify-between items-start">
@@ -170,7 +164,6 @@
                                 {% endif %}
                             </div>
                             
-                            <!-- 操作栏 -->
                             <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-medium mt-1">
                                 <a href="/download_zip/{{ a.id }}" class="text-blue-600 hover:underline">打包下载</a>
                                 <span class="text-gray-300">|</span>
@@ -206,17 +199,27 @@
                         </div>
                     </div>
 
-                    <!-- 已交/未交：水平并排 -->
+                    <!-- 班级筛选 Tab (仅全部班级显示) -->
+                    {% if a.class_name == '全部班级' and all_classes|length > 0 %}
+                    <div class="bg-white px-4 pt-3 pb-2 flex flex-wrap gap-2 items-center border-b border-gray-100">
+                        <span class="text-xs font-bold text-gray-500 mr-1">班级筛选:</span>
+                        <button class="filter-btn text-xs px-2.5 py-1 rounded-md bg-indigo-600 text-white shadow-sm transition-colors" data-target-class="all" data-card-id="{{ a.id }}">全部</button>
+                        {% for cls in all_classes %}
+                        <button class="filter-btn text-xs px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors" data-target-class="{{ cls }}" data-card-id="{{ a.id }}">{{ cls }}</button>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
                     <div class="bg-gray-50/50 p-3 grid grid-cols-2 gap-4 text-sm">
                         <!-- 已交 -->
                         <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col min-h-0">
                             <strong class="text-green-600 block mb-2.5 flex items-center border-b pb-2 flex-shrink-0">
                                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                已交名单 ({{ report[a.id].submitted|length }}人)
+                                <span id="submitted-title-{{ a.id }}">已交名单 ({{ report[a.id].submitted|length }}人)</span>
                             </strong>
                             <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
                                 {% for sub in report[a.id].submitted %}
-                                <li class="flex justify-between items-center bg-green-50/50 p-2 rounded-lg border border-green-100">
+                                <li class="student-item flex justify-between items-center bg-green-50/50 p-2 rounded-lg border border-green-100" data-class="{{ sub.class_name }}" data-type="submitted">
                                     <div class="flex items-center min-w-0 pr-2">
                                         <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-1.5 flex-shrink-0">{{ sub.student_name[0] }}</div>
                                         <span class="font-medium text-gray-800 text-xs truncate" title="{{ sub.student_id }} - {{ sub.student_name }}">{{ sub.student_id }} - {{ sub.student_name }}</span>
@@ -240,11 +243,11 @@
                         <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col min-h-0">
                             <strong class="text-red-500 block mb-2.5 flex items-center border-b pb-2 flex-shrink-0">
                                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                未交名单 ({{ report[a.id].not_submitted|length }}人)
+                                <span id="not_submitted-title-{{ a.id }}">未交名单 ({{ report[a.id].not_submitted|length }}人)</span>
                             </strong>
                             <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 flex-grow custom-scrollbar">
                                 {% for stu in report[a.id].not_submitted %}
-                                <li class="flex items-center bg-red-50/50 p-2 rounded-lg border border-red-100">
+                                <li class="student-item flex items-center bg-red-50/50 p-2 rounded-lg border border-red-100" data-class="{{ stu.class_name }}" data-type="not_submitted">
                                     <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-1.5 flex-shrink-0">{{ stu.name[0] }}</div>
                                     <span class="text-gray-800 text-xs truncate" title="{{ stu.username }} - {{ stu.name }}">{{ stu.username }} - {{ stu.name }}</span>
                                 </li>
@@ -264,7 +267,6 @@
         </div>
     </div>
 
-    <!-- ==================== 右侧列 (3/12)：用户管理 ==================== -->
     <div class="lg:col-span-3 flex flex-col min-h-0 pb-4">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-full min-h-0">
             <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
@@ -272,7 +274,6 @@
                 用户管理
             </h3>
 
-            <!-- 搜索框 -->
             <div class="relative mb-3 flex-shrink-0">
                 <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                     <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -281,7 +282,6 @@
                        class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
             </div>
             
-            <!-- 用户列表 -->
             <div class="overflow-y-auto pr-2 space-y-1 flex-grow custom-scrollbar" id="userListContainer">
                 {% for user in users %}
                 <div class="user-item flex flex-col p-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100 gap-1.5" 
@@ -335,10 +335,8 @@
 
 </div>
 
-<!-- 隐藏数据容器 -->
 <div id="data-container" data-total-subs="{{ current_total_subs }}" class="hidden"></div>
 
-<!-- 悬浮刷新提示框 -->
 <div id="refresh-toast" class="fixed bottom-8 right-8 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
     <div class="flex items-center">
         <span class="relative flex h-3 w-3 mr-3">
@@ -380,7 +378,6 @@
                 .catch(() => console.log("检查更新失败"));
         }, 60000);
 
-        // 用户搜索功能
         const searchInput = document.getElementById('userSearchInput');
         const userItems = document.querySelectorAll('.user-item');
         const noResult = document.getElementById('noSearchResult');
@@ -404,6 +401,47 @@
             } else {
                 noResult.classList.add('hidden');
             }
+        });
+
+        // 班级筛选功能
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const cardId = this.dataset.cardId;
+                const targetClass = this.dataset.targetClass;
+                const btnGroup = this.parentElement.querySelectorAll('.filter-btn');
+                
+                // 切换按钮样式
+                btnGroup.forEach(b => {
+                    b.classList.remove('bg-indigo-600', 'text-white', 'shadow-sm');
+                    b.classList.add('bg-gray-50', 'border', 'border-gray-200', 'text-gray-600', 'hover:bg-gray-100');
+                });
+                this.classList.remove('bg-gray-50', 'border', 'border-gray-200', 'text-gray-600', 'hover:bg-gray-100');
+                this.classList.add('bg-indigo-600', 'text-white', 'shadow-sm');
+
+                // 筛选列表项
+                const card = document.getElementById(`assignment-card-${cardId}`);
+                const items = card.querySelectorAll('.student-item');
+                
+                let submittedCount = 0;
+                let notSubmittedCount = 0;
+                
+                items.forEach(item => {
+                    const isSubmitted = item.dataset.type === 'submitted';
+                    if (targetClass === 'all' || item.dataset.class === targetClass) {
+                        item.style.display = 'flex';
+                        if (isSubmitted) submittedCount++;
+                        else notSubmittedCount++;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+                
+                // 动态更新标题上的数字
+                const submitTitle = card.querySelector(`#submitted-title-${cardId}`);
+                const notSubmitTitle = card.querySelector(`#not_submitted-title-${cardId}`);
+                if (submitTitle) submitTitle.textContent = `已交名单 (${submittedCount}人)`;
+                if (notSubmitTitle) notSubmitTitle.textContent = `未交名单 (${notSubmittedCount}人)`;
+            });
         });
     });
 
