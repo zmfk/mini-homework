@@ -78,6 +78,7 @@ def get_pa_stats():
     cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
     cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
     
+    # 固定磁盘占用显示（因官方无磁盘API）
     app_disk_usage = 4.4
     disk_limit = 512.0
     disk_pct = round((app_disk_usage / disk_limit) * 100, 1)
@@ -116,16 +117,43 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# 新增：用户自助修改密码接口
-@app.route('/change_password', methods=['POST'])
+@app.route('/change_password', methods=['GET', 'POST'])
 @login_required
 def change_password():
-    new_pwd = request.form.get('new_password')
-    if new_pwd and new_pwd.strip() != "":
+    if request.method == 'POST':
+        old_pwd = request.form.get('old_password')
+        new_pwd = request.form.get('new_password')
+        confirm_pwd = request.form.get('confirm_password')
+
+        if not old_pwd or not new_pwd or not confirm_pwd:
+            flash('所有输入框均为必填项！', 'error')
+            return redirect(url_for('change_password'))
+
+        if not check_password_hash(current_user.password_hash, old_pwd):
+            flash('原密码错误，请重试！', 'error')
+            return redirect(url_for('change_password'))
+
+        if len(new_pwd.strip()) < 6:
+            flash('新密码长度不能少于6位！', 'error')
+            return redirect(url_for('change_password'))
+
+        if new_pwd != confirm_pwd:
+            flash('两次输入的新密码不一致！', 'error')
+            return redirect(url_for('change_password'))
+
+        if new_pwd == old_pwd:
+            flash('新密码不能与原密码相同！', 'error')
+            return redirect(url_for('change_password'))
+
         current_user.password_hash = generate_password_hash(new_pwd.strip())
         db.session.commit()
-        return jsonify({"status": "success", "message": "密码修改成功！"})
-    return jsonify({"status": "error", "message": "密码不能为空！"})
+        
+        flash('密码修改成功！请牢记新密码。', 'success')
+        return redirect(url_for(f'{current_user.role}'))
+
+    # 从环境变量读取联系方式，防止硬编码泄露到 GitHub
+    contact_email = os.environ.get('CONTACT_EMAIL', '')
+    return render_template('change_password.html', contact_email=contact_email)
 
 @app.route('/api/submission_count')
 @login_required
@@ -140,6 +168,7 @@ def submission_count():
 def admin():
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
+    # 1. 发布作业
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
@@ -152,6 +181,7 @@ def admin():
             db.session.commit()
             flash('作业创建成功！', 'success')
             
+    # 2. 导入名单
     if request.method == 'POST' and 'batch_import' in request.form:
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
@@ -194,6 +224,7 @@ def admin():
         db.session.commit()
         flash(f'成功处理 {count} 名新用户！', 'success')
 
+    # 3. 管理员重置/修改密码
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
         action = request.form.get('action')
@@ -212,6 +243,7 @@ def admin():
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     users = User.query.order_by(User.role.asc(), User.class_name.asc(), User.username.asc()).all()
     
+    # 提取所有出现的班级供前端下拉提示
     all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
     
     stats = {}
@@ -223,6 +255,7 @@ def admin():
         subs = Submission.query.filter_by(assignment_id=a.id).all()
         submitted_ids = [s.student_id for s in subs]
         
+        # 根据作业目标班级过滤名单
         if a.class_name == '全部班级':
             target_students = [u for u in users if u.role in ['student', 'admin'] and u.username != 'admin']
         else:
@@ -236,6 +269,7 @@ def admin():
             
         stats[a.id] = {'total': len(subs), 'files': [s.file_name for s in subs]}
         
+        # 按学号排序
         subs.sort(key=lambda x: x.student_id)
         not_submitted.sort(key=lambda x: x.username)
         
@@ -439,6 +473,8 @@ def student():
         assignment = Assignment.query.get(assignment_id)
         
         now_bj = get_bj_time()
+        
+        # 核心越权校验：防止学生提交不属于自己班级的作业
         if not assignment or (assignment.class_name != '全部班级' and assignment.class_name != current_user.class_name):
             flash('越权操作：该作业不属于你的班级！', 'error')
             return redirect(url_for('student'))
@@ -450,6 +486,7 @@ def student():
         if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
             
+            # 宏病毒检测
             if ext == '.docx':
                 try:
                     with zipfile.ZipFile(file.stream) as zf:
@@ -480,6 +517,7 @@ def student():
         else:
             flash('只支持上传 PDF, DOC, DOCX 格式！', 'error')
             
+    # 核心隔离：学生只能看到本班作业或全部作业
     assignments = Assignment.query.filter(
         (Assignment.class_name == current_user.class_name) | (Assignment.class_name == '全部班级')
     ).order_by(Assignment.id.desc()).all()
@@ -541,6 +579,7 @@ def download_zip(assignment_id):
                 
     memory_file.seek(0)
     
+    # 过滤特殊字符并加上班级前缀
     safe_class = assignment.class_name.replace('/', '_').replace('\\', '_')
     safe_title = assignment.title.replace('/', '_').replace('\\', '_')
     
@@ -549,6 +588,7 @@ def download_zip(assignment_id):
 with app.app_context():
     db.create_all()
     
+    # 自动平滑升级旧数据库结构
     db_path = os.path.join(DATA_DIR, 'database.db')
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -571,6 +611,7 @@ with app.app_context():
             
         conn.close()
 
+    # 初始化默认管理员
     if not User.query.filter_by(username='admin').first():
         db.session.add(User(username='admin', password_hash=generate_password_hash('admin123'), role='admin', name='超级管理员', class_name='系统'))
         db.session.commit()
