@@ -10,7 +10,15 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-123'
+
+# 安全加固 1：从环境变量读取 SECRET_KEY，如果没有则生成随机密钥
+# 注意：如果在本地，每次重启服务会导致登录失效。云端请在环境变量配置 SECRET_KEY。
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
+
+# 安全加固 2：设置 Cookie 安全属性
+app.config['SESSION_COOKIE_HTTPONLY'] = True   # 防止 JS 读取 Cookie
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # 缓解 CSRF
+# app.config['SESSION_COOKIE_SECURE'] = True   # 如果你强制全站 HTTPS，请取消注释这行
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
@@ -27,6 +35,16 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+# 安全加固 3：全局响应头，防止 XSS 和点击劫持
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    # 强制浏览器使用 HTTPS (1年)
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -78,7 +96,6 @@ def get_pa_stats():
     cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
     cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
     
-    # 固定磁盘占用显示（因官方无磁盘API）
     app_disk_usage = 4.4
     disk_limit = 512.0
     disk_pct = round((app_disk_usage / disk_limit) * 100, 1)
@@ -151,7 +168,6 @@ def change_password():
         flash('密码修改成功！请牢记新密码。', 'success')
         return redirect(url_for(f'{current_user.role}'))
 
-    # 从环境变量读取联系方式，防止硬编码泄露到 GitHub
     contact_email = os.environ.get('CONTACT_EMAIL', '')
     return render_template('change_password.html', contact_email=contact_email)
 
@@ -168,7 +184,6 @@ def submission_count():
 def admin():
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
-    # 1. 发布作业
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
@@ -181,7 +196,6 @@ def admin():
             db.session.commit()
             flash('作业创建成功！', 'success')
             
-    # 2. 导入名单
     if request.method == 'POST' and 'batch_import' in request.form:
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
@@ -224,7 +238,6 @@ def admin():
         db.session.commit()
         flash(f'成功处理 {count} 名新用户！', 'success')
 
-    # 3. 管理员重置/修改密码
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
         action = request.form.get('action')
@@ -243,7 +256,6 @@ def admin():
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     users = User.query.order_by(User.role.asc(), User.class_name.asc(), User.username.asc()).all()
     
-    # 提取所有出现的班级供前端下拉提示
     all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
     
     stats = {}
@@ -255,7 +267,6 @@ def admin():
         subs = Submission.query.filter_by(assignment_id=a.id).all()
         submitted_ids = [s.student_id for s in subs]
         
-        # 根据作业目标班级过滤名单
         if a.class_name == '全部班级':
             target_students = [u for u in users if u.role in ['student', 'admin'] and u.username != 'admin']
         else:
@@ -269,7 +280,6 @@ def admin():
             
         stats[a.id] = {'total': len(subs), 'files': [s.file_name for s in subs]}
         
-        # 按学号排序
         subs.sort(key=lambda x: x.student_id)
         not_submitted.sort(key=lambda x: x.username)
         
@@ -473,8 +483,6 @@ def student():
         assignment = Assignment.query.get(assignment_id)
         
         now_bj = get_bj_time()
-        
-        # 核心越权校验：防止学生提交不属于自己班级的作业
         if not assignment or (assignment.class_name != '全部班级' and assignment.class_name != current_user.class_name):
             flash('越权操作：该作业不属于你的班级！', 'error')
             return redirect(url_for('student'))
@@ -486,7 +494,6 @@ def student():
         if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
             
-            # 宏病毒检测
             if ext == '.docx':
                 try:
                     with zipfile.ZipFile(file.stream) as zf:
@@ -517,7 +524,6 @@ def student():
         else:
             flash('只支持上传 PDF, DOC, DOCX 格式！', 'error')
             
-    # 核心隔离：学生只能看到本班作业或全部作业
     assignments = Assignment.query.filter(
         (Assignment.class_name == current_user.class_name) | (Assignment.class_name == '全部班级')
     ).order_by(Assignment.id.desc()).all()
@@ -538,9 +544,27 @@ def student_delete(assignment_id):
         flash('提交已撤回，你可以重新上传了。', 'success')
     return redirect(url_for('student'))
 
+# ==========================================
+# 安全加固 4：防越权下载（IDOR 漏洞修复）
+# ==========================================
 @app.route('/download/<filename>')
 @login_required
 def download_file(filename):
+    # 1. 基础校验：文件是否存在
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(filepath):
+        flash('文件不存在或已被清理！', 'error')
+        return redirect(request.referrer or url_for('index'))
+
+    # 2. 权限校验：
+    # 如果是学生，必须在数据库里查到他拥有这个文件名
+    if current_user.role not in ['admin', 'teacher']:
+        sub = Submission.query.filter_by(student_id=current_user.username, file_name=filename).first()
+        if not sub:
+            flash('安全拦截：你无权下载其他人的作业！', 'error')
+            return redirect(request.referrer or url_for('index'))
+
+    # 3. 如果校验通过，发送文件
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
 @app.route('/download_zip/<int:assignment_id>')
@@ -579,7 +603,6 @@ def download_zip(assignment_id):
                 
     memory_file.seek(0)
     
-    # 过滤特殊字符并加上班级前缀
     safe_class = assignment.class_name.replace('/', '_').replace('\\', '_')
     safe_title = assignment.title.replace('/', '_').replace('\\', '_')
     
@@ -588,7 +611,6 @@ def download_zip(assignment_id):
 with app.app_context():
     db.create_all()
     
-    # 自动平滑升级旧数据库结构
     db_path = os.path.join(DATA_DIR, 'database.db')
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -611,7 +633,6 @@ with app.app_context():
             
         conn.close()
 
-    # 初始化默认管理员
     if not User.query.filter_by(username='admin').first():
         db.session.add(User(username='admin', password_hash=generate_password_hash('admin123'), role='admin', name='超级管理员', class_name='系统'))
         db.session.commit()
