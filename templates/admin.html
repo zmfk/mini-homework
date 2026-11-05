@@ -127,7 +127,6 @@
                     <h2 class="text-lg font-bold text-gray-900">作业看板</h2>
                     <span class="text-xs font-medium bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">共 {{ assignments|length }} 项</span>
                 </div>
-                <!-- 归档切换按钮 -->
                 <button type="button" id="toggleArchiveBtn" onclick="toggleArchiveView()" class="text-xs font-medium text-gray-500 hover:text-indigo-600 transition-colors flex items-center bg-gray-50 hover:bg-indigo-50 px-3 py-1.5 rounded-lg border border-gray-200">
                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
                     <span id="toggleArchiveText">显示已归档</span>
@@ -202,10 +201,15 @@
                                    class="text-indigo-600 hover:underline">改班级</a>
                                 
                                 <span class="text-gray-300">|</span>
-                                <!-- 核心修改：归档/取消归档 -->
-                                <a href="/admin/toggle_archive/{{ a.id }}" class="{% if a.is_archived %}text-blue-600{% else %}text-gray-500{% endif %} hover:underline">
-                                    {% if a.is_archived %}取消归档{% else %}归档{% endif %}
-                                </a>
+                                <!-- 核心修改：归档逻辑控制 -->
+                                {% if a.is_archived %}
+                                    <a href="/admin/toggle_archive/{{ a.id }}" class="text-blue-600 hover:underline">取消归档</a>
+                                {% elif a.is_forced_closed or now > a.deadline %}
+                                    <a href="/admin/toggle_archive/{{ a.id }}" class="text-gray-500 hover:underline">归档</a>
+                                {% else %}
+                                    <!-- 正在进行中：提示不可归档 -->
+                                    <span class="text-gray-300 cursor-not-allowed" title="作业进行中，请先强制截止后再归档">不可归档</span>
+                                {% endif %}
                                 
                                 <span class="text-gray-300">|</span>
                                 <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空文件吗？(保留名单)')" class="text-purple-600 hover:underline">清空文件</a>
