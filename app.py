@@ -354,7 +354,6 @@ def update_deadline(assignment_id):
             flash('时间格式错误，更新失败', 'error')
     return redirect(url_for('admin'))
 
-# 新增：修改作业目标班级
 @app.route('/admin/update_class/<int:assignment_id>', methods=['POST'])
 @login_required
 def update_class(assignment_id):
@@ -530,7 +529,12 @@ def download_zip(assignment_id):
                 zf.write(filepath, sub.file_name)
                 
     memory_file.seek(0)
-    return send_file(memory_file, download_name=f"{assignment.title}_打包.zip", as_attachment=True)
+    
+    # 核心修改：清理非法字符并加入班级名称
+    safe_class = assignment.class_name.replace('/', '_').replace('\\', '_')
+    safe_title = assignment.title.replace('/', '_').replace('\\', '_')
+    
+    return send_file(memory_file, download_name=f"{safe_class}_{safe_title}_打包.zip", as_attachment=True)
 
 with app.app_context():
     db.create_all()
