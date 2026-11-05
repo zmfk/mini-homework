@@ -116,6 +116,17 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+# 新增：用户自助修改密码接口
+@app.route('/change_password', methods=['POST'])
+@login_required
+def change_password():
+    new_pwd = request.form.get('new_password')
+    if new_pwd and new_pwd.strip() != "":
+        current_user.password_hash = generate_password_hash(new_pwd.strip())
+        db.session.commit()
+        return jsonify({"status": "success", "message": "密码修改成功！"})
+    return jsonify({"status": "error", "message": "密码不能为空！"})
+
 @app.route('/api/submission_count')
 @login_required
 def submission_count():
@@ -530,7 +541,6 @@ def download_zip(assignment_id):
                 
     memory_file.seek(0)
     
-    # 核心修改：清理非法字符并加入班级名称
     safe_class = assignment.class_name.replace('/', '_').replace('\\', '_')
     safe_title = assignment.title.replace('/', '_').replace('\\', '_')
     
