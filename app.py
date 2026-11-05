@@ -34,7 +34,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(128), nullable=False)
     role = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(50), nullable=False)
-    class_name = db.Column(db.String(50), default='默认班级') # 新增：用户所属班级
+    class_name = db.Column(db.String(50), default='默认班级')
 
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -43,7 +43,7 @@ class Assignment(db.Model):
     is_active = db.Column(db.Boolean, default=False)
     is_forced_closed = db.Column(db.Boolean, default=False) 
     last_download_count = db.Column(db.Integer, default=0)
-    class_name = db.Column(db.String(50), default='全部班级') # 新增：作业目标班级
+    class_name = db.Column(db.String(50), default='全部班级')
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -129,7 +129,6 @@ def submission_count():
 def admin():
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
-    # 发布作业
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
@@ -142,7 +141,6 @@ def admin():
             db.session.commit()
             flash('作业创建成功！', 'success')
             
-    # 导入名单
     if request.method == 'POST' and 'batch_import' in request.form:
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
@@ -155,17 +153,14 @@ def admin():
             line_str = line_str.replace('\t', ' ').replace(',', ' ').replace('，', ' ')
             parts = line_str.split()
             
-            # 支持：学号 姓名 班级 [角色]
             if len(parts) >= 2:
                 username = parts[0].strip()
                 name = parts[1].strip()
                 class_name = parts[2].strip() if len(parts) >= 3 else '默认班级'
                 role = 'student'
                 
-                # 如果第四个词是 admin/teacher，则覆盖角色
                 if len(parts) >= 4 and parts[3].strip().lower() in ['admin', 'teacher']:
                     role = parts[3].strip().lower()
-                # 如果只有三个词，但第三个词是角色，则修正
                 elif len(parts) == 3 and parts[2].strip().lower() in ['admin', 'teacher']:
                     role = parts[2].strip().lower()
                     class_name = '默认班级'
@@ -181,7 +176,6 @@ def admin():
                     db.session.add(new_user)
                     count += 1
                 else:
-                    # 如果用户已存在，可以顺便更新一下班级
                     existing_user = User.query.filter_by(username=username).first()
                     existing_user.class_name = class_name
                     if role != 'student':
@@ -189,7 +183,6 @@ def admin():
         db.session.commit()
         flash(f'成功处理 {count} 名新用户！', 'success')
 
-    # 修改密码
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
         action = request.form.get('action')
@@ -208,10 +201,8 @@ def admin():
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     users = User.query.order_by(User.role.asc(), User.class_name.asc(), User.username.asc()).all()
     
-    # 获取所有班级名称，供前端下拉框使用
     all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
     
-    # 统计逻辑
     stats = {}
     report = {}
     need_backup = []
@@ -221,7 +212,6 @@ def admin():
         subs = Submission.query.filter_by(assignment_id=a.id).all()
         submitted_ids = [s.student_id for s in subs]
         
-        # 核心隔离：未交名单只计算该作业目标班级的学生
         if a.class_name == '全部班级':
             target_students = [u for u in users if u.role in ['student', 'admin'] and u.username != 'admin']
         else:
@@ -364,6 +354,21 @@ def update_deadline(assignment_id):
             flash('时间格式错误，更新失败', 'error')
     return redirect(url_for('admin'))
 
+# 新增：修改作业目标班级
+@app.route('/admin/update_class/<int:assignment_id>', methods=['POST'])
+@login_required
+def update_class(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    new_class = request.form.get('new_class', '').strip()
+    if a:
+        if not new_class:
+            new_class = '全部班级'
+        a.class_name = new_class
+        db.session.commit()
+        flash(f'作业 [{a.title}] 目标班级已修改为: {new_class}', 'success')
+    return redirect(url_for('admin'))
+
 @app.route('/admin/delete_submission/<int:submission_id>')
 @login_required
 def delete_submission(submission_id):
@@ -424,7 +429,6 @@ def student():
         assignment = Assignment.query.get(assignment_id)
         
         now_bj = get_bj_time()
-        # 核心安全验证：检查作业是否属于该学生的班级
         if not assignment or (assignment.class_name != '全部班级' and assignment.class_name != current_user.class_name):
             flash('越权操作：该作业不属于你的班级！', 'error')
             return redirect(url_for('student'))
@@ -466,7 +470,6 @@ def student():
         else:
             flash('只支持上传 PDF, DOC, DOCX 格式！', 'error')
             
-    # 核心隔离：学生只能看到本班作业或全部作业
     assignments = Assignment.query.filter(
         (Assignment.class_name == current_user.class_name) | (Assignment.class_name == '全部班级')
     ).order_by(Assignment.id.desc()).all()
@@ -537,14 +540,12 @@ with app.app_context():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # 自动升级 user 表
         cursor.execute("PRAGMA table_info(user)")
         user_columns = [col[1] for col in cursor.fetchall()]
         if 'class_name' not in user_columns:
             cursor.execute("ALTER TABLE user ADD COLUMN class_name VARCHAR(50) DEFAULT '默认班级'")
             conn.commit()
             
-        # 自动升级 assignment 表
         cursor.execute("PRAGMA table_info(assignment)")
         assign_columns = [col[1] for col in cursor.fetchall()]
         if 'class_name' not in assign_columns:
