@@ -106,7 +106,7 @@ def get_pa_stats():
     
     # 动态计算磁盘占用：基础环境 + uploads文件夹大小
     upload_size = get_folder_size(app.config['UPLOAD_FOLDER'])
-    base_size = 4.0 # 基础系统环境预估占用（Python、Flask、代码等）
+    base_size = 5.25 # 基础系统环境预估占用（Python、Flask、代码等）
     app_disk_usage = round(base_size + upload_size, 2)
     
     disk_limit = 512.0
