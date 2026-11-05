@@ -53,7 +53,7 @@ class Assignment(db.Model):
     deadline = db.Column(db.DateTime, nullable=False)
     is_active = db.Column(db.Boolean, default=False)
     is_forced_closed = db.Column(db.Boolean, default=False) 
-    is_archived = db.Column(db.Boolean, default=False) # 新增：是否归档
+    is_archived = db.Column(db.Boolean, default=False)
     last_download_count = db.Column(db.Integer, default=0)
     class_name = db.Column(db.String(50), default='全部班级')
 
@@ -308,6 +308,14 @@ def toggle_archive(assignment_id):
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     a = Assignment.query.get(assignment_id)
     if a:
+        # 核心拦截：如果是取消归档，随便取消；但如果是归档，必须确保已经截止且没在强制开放
+        if not a.is_archived:
+            now_bj = get_bj_time()
+            is_closed = a.is_forced_closed or (now_bj > a.deadline and not a.is_active)
+            if not is_closed:
+                flash('归档失败：该作业目前仍在开放中！请先点击【强制截止】或等待截止时间结束，再进行归档整理。', 'error')
+                return redirect(request.referrer or url_for('admin'))
+        
         a.is_archived = not a.is_archived
         db.session.commit()
         status = "已归档" if a.is_archived else "已取消归档"
