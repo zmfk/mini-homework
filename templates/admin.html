@@ -142,7 +142,7 @@
                                 <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
                                     {{ a.title }}
                                     <span class="px-1.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded">
-                                        🎯 {{ a.class_name }}
+                                        {{ a.class_name }}
                                     </span>
                                 </h3>
                                 {% if a.is_active %}
@@ -192,7 +192,6 @@
                                 </form>
                                 
                                 <span class="text-gray-300">|</span>
-                                <!-- 核心修改：使用 data-* 属性传递数据 -->
                                 <a href="javascript:void(0)" 
                                    data-id="{{ a.id }}" 
                                    data-class="{{ a.class_name }}" 
@@ -418,7 +417,6 @@
         }
     }
 
-    // 核心修改：接收按钮对象，从 dataset 中读取数据
     function promptChangeClass(btn) {
         const assignmentId = btn.dataset.id;
         const currentClass = btn.dataset.class;
