@@ -187,6 +187,9 @@ def login():
     contact_email = os.environ.get('CONTACT_EMAIL', '')
     return render_template('login.html', contact_email=contact_email)
 
+# ==========================================
+# 核心修改：修复信息泄露漏洞
+# ==========================================
 @app.route('/api/request_reset', methods=['POST'])
 def api_request_reset():
     data = request.get_json()
@@ -197,10 +200,10 @@ def api_request_reset():
         return jsonify({"success": False, "message": "学号和姓名不能为空"})
 
     user = User.query.filter_by(username=student_id).first()
-    if not user:
-        return jsonify({"success": False, "message": "该学号不存在，请检查输入"})
-    if user.name != student_name:
-        return jsonify({"success": False, "message": "学号与姓名不匹配，请重新输入"})
+    
+    # 统一错误提示，无论学号不存在还是姓名不匹配，都返回相同信息
+    if not user or user.name != student_name:
+        return jsonify({"success": False, "message": "学号或姓名错误，请检查输入"})
 
     existing_req = PasswordResetRequest.query.filter_by(student_id=student_id).first()
     if existing_req:
