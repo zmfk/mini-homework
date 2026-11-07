@@ -277,7 +277,7 @@ def admin():
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     users = User.query.order_by(User.role.asc(), User.class_name.asc(), User.username.asc()).all()
     
-    all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
+    all_classes = sorted(list(set([u.class_name for u in users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
     student_class_map = {u.username: u.class_name for u in users if u.role in ['student', 'admin'] and u.username != 'admin'}
     
     stats = {}
@@ -328,7 +328,7 @@ def admin():
                            pa_stats=pa_stats,
                            all_classes=all_classes)
 
-# ================= 核心修改：精简样式，突出逾期未交 =================
+# ================= 核心修改：导出带有动态条件样式的 Excel (.xlsx) =================
 @app.route('/admin/export_summary')
 @login_required
 def export_summary():
@@ -336,15 +336,17 @@ def export_summary():
     
     users = User.query.order_by(User.class_name.asc(), User.username.asc()).all()
     assignments = Assignment.query.order_by(Assignment.id.asc()).all()
-    all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
     
-    # 1. 正常已交：白底黑字（不设置填充，使用默认即可）
+    # 修复：包含 admin 角色但排除超级管理员，防止班级列表中漏掉特殊的班级
+    all_classes = sorted(list(set([u.class_name for u in users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
+    
+    # 1. 正常已交：白底黑字
     style_submitted = {'font': Font(color="000000")} 
     
-    # 2. 补交：不要那么明显，使用浅灰色、斜体字，无背景色
-    style_late = {'font': Font(color="A6A6A6", italic=True)} 
+    # 2. 补交：跟正常已交完全一致，纯黑字
+    style_late = {'font': Font(color="000000")} 
     
-    # 3. 未截止且未交：使用亮橙色粗体字作为温和提醒，不要大面积背景色
+    # 3. 未截止且未交：使用亮橙色粗体字作为温和提醒
     style_pending = {'font': Font(color="ED7D31", bold=True)} 
     
     # 4. 逾期未交（含手动唤出但已过截止时间的）：使用最醒目的浅红底 + 深红粗体字
@@ -358,7 +360,8 @@ def export_summary():
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for cls in all_classes:
-            students = [u for u in users if u.role == 'student' and u.class_name == cls]
+            # 修复：包含 admin 角色学生，并排除系统超级管理员账号
+            students = [u for u in users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name == cls]
             if not students:
                 continue
                 
@@ -384,7 +387,6 @@ def export_summary():
                 col_styles = [] 
                 
                 for a in cls_assignments:
-                    # 逻辑修正：不再考虑 is_active，只要当前时间过了设定截止时间，未交的一律视为逾期
                     is_overdue = now_bj > a.deadline
                     
                     sub = Submission.query.filter_by(assignment_id=a.id, student_id=stu.username).first()
