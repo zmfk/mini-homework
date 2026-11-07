@@ -83,7 +83,6 @@ class Submission(db.Model):
     student_name = db.Column(db.String(50), nullable=False)
     file_name = db.Column(db.String(150), nullable=False)
     submit_time = db.Column(db.DateTime, server_default=db.func.now())
-    # 新增字段：标记文件是否是被管理员主动清理的
     is_cleared = db.Column(db.Boolean, default=False) 
 
 @login_manager.user_loader
@@ -500,7 +499,6 @@ def clear_files(assignment_id):
         if os.path.exists(filepath):
             os.remove(filepath)
             count += 1
-        # 标记为已主动清理
         sub.is_cleared = True
     
     db.session.commit()
@@ -681,7 +679,6 @@ def student():
                 if os.path.exists(old_path): os.remove(old_path)
                 db.session.delete(old_sub)
             
-            # 重新提交时，如果是同一个文件，覆盖后状态重置为 False
             db.session.add(Submission(assignment_id=assignment_id, student_id=current_user.username, student_name=current_user.name, file_name=filename, is_cleared=False))
             db.session.commit()
             flash('作业提交成功！', 'success')
@@ -693,7 +690,44 @@ def student():
     ).order_by(Assignment.id.desc()).all()
     
     my_subs = {s.assignment_id: s for s in Submission.query.filter_by(student_id=current_user.username).all()}
-    return render_template('student.html', assignments=assignments, my_subs=my_subs, now=get_bj_time())
+    now_bj = get_bj_time()
+
+    pending_assignments = []
+    overdue_assignments = []
+    submitted_assignments = []
+
+    for a in assignments:
+        sub = my_subs.get(a.id)
+        is_expired = a.is_forced_closed or (now_bj > a.deadline and not a.is_active)
+        
+        if sub:
+            submitted_assignments.append(a)
+        elif is_expired:
+            overdue_assignments.append(a)
+        else:
+            pending_assignments.append(a)
+
+    total_count = len(assignments)
+    submitted_count = len(submitted_assignments)
+    pending_count = len(pending_assignments)
+    overdue_count = len(overdue_assignments)
+
+    # 在后端计算好百分比，避免前端模板报错
+    percent = 0
+    if total_count > 0:
+        percent = int(round(submitted_count / total_count * 100))
+
+    return render_template('student.html', 
+                           pending_assignments=pending_assignments,
+                           overdue_assignments=overdue_assignments,
+                           submitted_assignments=submitted_assignments,
+                           my_subs=my_subs, 
+                           now=now_bj,
+                           total_count=total_count,
+                           submitted_count=submitted_count,
+                           pending_count=pending_count,
+                           overdue_count=overdue_count,
+                           percent=percent)
 
 @app.route('/student/delete/<int:assignment_id>')
 @login_required
@@ -842,7 +876,6 @@ with app.app_context():
             cursor.execute("UPDATE assignment SET publish_time = CURRENT_TIMESTAMP WHERE publish_time IS NULL")
             conn.commit()
 
-        # 新增 Submission 表的数据迁移逻辑
         cursor.execute("PRAGMA table_info(submission)")
         sub_columns = [col[1] for col in cursor.fetchall()]
         if 'is_cleared' not in sub_columns:
