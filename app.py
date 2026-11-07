@@ -83,6 +83,8 @@ class Submission(db.Model):
     student_name = db.Column(db.String(50), nullable=False)
     file_name = db.Column(db.String(150), nullable=False)
     submit_time = db.Column(db.DateTime, server_default=db.func.now())
+    # 新增字段：标记文件是否是被管理员主动清理的
+    is_cleared = db.Column(db.Boolean, default=False) 
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -328,7 +330,6 @@ def admin():
                            pa_stats=pa_stats,
                            all_classes=all_classes)
 
-# ================= 核心修改：导出带有动态条件样式的 Excel (.xlsx) =================
 @app.route('/admin/export_summary')
 @login_required
 def export_summary():
@@ -337,19 +338,11 @@ def export_summary():
     users = User.query.order_by(User.class_name.asc(), User.username.asc()).all()
     assignments = Assignment.query.order_by(Assignment.id.asc()).all()
     
-    # 修复：包含 admin 角色但排除超级管理员，防止班级列表中漏掉特殊的班级
     all_classes = sorted(list(set([u.class_name for u in users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
     
-    # 1. 正常已交：白底黑字
     style_submitted = {'font': Font(color="000000")} 
-    
-    # 2. 补交：跟正常已交完全一致，纯黑字
     style_late = {'font': Font(color="000000")} 
-    
-    # 3. 未截止且未交：使用亮橙色粗体字作为温和提醒
     style_pending = {'font': Font(color="ED7D31", bold=True)} 
-    
-    # 4. 逾期未交（含手动唤出但已过截止时间的）：使用最醒目的浅红底 + 深红粗体字
     style_overdue = {
         'fill': PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"), 
         'font': Font(color="9C0006", bold=True) 
@@ -360,7 +353,6 @@ def export_summary():
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for cls in all_classes:
-            # 修复：包含 admin 角色学生，并排除系统超级管理员账号
             students = [u for u in users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name == cls]
             if not students:
                 continue
@@ -371,7 +363,6 @@ def export_summary():
             ws = wb.active
             ws.title = f"{cls}班总表"
             
-            # 写入表头
             header = ['学号', '姓名'] + [a.title for a in cls_assignments]
             ws.append(header)
             
@@ -381,7 +372,6 @@ def export_summary():
                 cell.fill = header_fill
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # 写入学生数据并应用样式
             for stu in students:
                 row = [str(stu.username), stu.name]
                 col_styles = [] 
@@ -401,9 +391,9 @@ def export_summary():
                     else:
                         row.append('未交')
                         if is_overdue:
-                            col_styles.append(style_overdue) # 逾期未交 -> 红色警报
+                            col_styles.append(style_overdue) 
                         else:
-                            col_styles.append(style_pending) # 未到期未交 -> 橙色字体提醒
+                            col_styles.append(style_pending) 
                             
                 ws.append(row)
                 
@@ -416,7 +406,6 @@ def export_summary():
                     if 'font' in style_dict:
                         cell.font = style_dict['font']
                 
-            # 调整列宽
             for col_idx, column_cells in enumerate(ws.columns, 1):
                 max_length = 0
                 column_letter = get_column_letter(col_idx)
@@ -511,6 +500,10 @@ def clear_files(assignment_id):
         if os.path.exists(filepath):
             os.remove(filepath)
             count += 1
+        # 标记为已主动清理
+        sub.is_cleared = True
+    
+    db.session.commit()
     flash(f'已清空 {count} 个物理文件，已交名单和记录已保留！', 'success')
     return redirect(url_for('admin'))
 
@@ -675,7 +668,12 @@ def student():
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
                 safe_title = safe_title.replace(char, '')
             filename = f"{current_user.username}_{current_user.name}_{safe_title}{ext}"
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            
+            try:
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            except Exception as e:
+                flash(f'文件保存失败，请联系老师。错误: {str(e)}', 'error')
+                return redirect(url_for('student'))
             
             old_sub = Submission.query.filter_by(assignment_id=assignment_id, student_id=current_user.username).first()
             if old_sub:
@@ -683,7 +681,8 @@ def student():
                 if os.path.exists(old_path): os.remove(old_path)
                 db.session.delete(old_sub)
             
-            db.session.add(Submission(assignment_id=assignment_id, student_id=current_user.username, student_name=current_user.name, file_name=filename))
+            # 重新提交时，如果是同一个文件，覆盖后状态重置为 False
+            db.session.add(Submission(assignment_id=assignment_id, student_id=current_user.username, student_name=current_user.name, file_name=filename, is_cleared=False))
             db.session.commit()
             flash('作业提交成功！', 'success')
         else:
@@ -758,7 +757,7 @@ def download_zip(assignment_id):
                 if sub_time_bj > assignment.deadline:
                     late_tag = " (补交)"
                 elif not file_exists:
-                    late_tag = " (已发送)"
+                    late_tag = " (已清理)" if s.is_cleared else " (文件丢失)"
                 else:
                     late_tag = ""
                     
@@ -790,7 +789,7 @@ def download_zip(assignment_id):
                     if sub_time_bj > assignment.deadline:
                         late_tag = " (补交)"
                     elif not file_exists:
-                        late_tag = " (已发送)"
+                        late_tag = " (已清理)" if s.is_cleared else " (文件丢失)"
                     else:
                         late_tag = ""
                         
@@ -841,6 +840,13 @@ with app.app_context():
         if 'publish_time' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN publish_time DATETIME")
             cursor.execute("UPDATE assignment SET publish_time = CURRENT_TIMESTAMP WHERE publish_time IS NULL")
+            conn.commit()
+
+        # 新增 Submission 表的数据迁移逻辑
+        cursor.execute("PRAGMA table_info(submission)")
+        sub_columns = [col[1] for col in cursor.fetchall()]
+        if 'is_cleared' not in sub_columns:
+            cursor.execute("ALTER TABLE submission ADD COLUMN is_cleared BOOLEAN DEFAULT 0")
             conn.commit()
             
         conn.close()

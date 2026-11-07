@@ -68,7 +68,11 @@
                                 {% if sub.file_exists %}
                                     <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-[11px] sm:text-xs font-medium bg-white px-1.5 sm:px-2 py-1 rounded border border-gray-200">下载</a>
                                 {% else %}
-                                    <span class="text-gray-400 text-[11px] sm:text-xs italic bg-white px-1.5 sm:px-2 py-1 rounded border border-gray-200 cursor-not-allowed">已清理</span>
+                                    {% if sub.is_cleared %}
+                                        <span title="管理员已主动清理了物理文件" class="text-gray-400 text-[11px] sm:text-xs italic bg-white px-1.5 sm:px-2 py-1 rounded border border-gray-200 cursor-not-allowed">管理员已清理</span>
+                                    {% else %}
+                                        <span title="异常：服务器文件丢失" class="text-red-500 text-[11px] sm:text-xs font-bold bg-red-50 px-1.5 sm:px-2 py-1 rounded border border-red-200 cursor-not-allowed">异常丢失</span>
+                                    {% endif %}
                                 {% endif %}
                                 <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？')" class="text-red-500 hover:text-red-700 bg-white px-1.5 sm:px-2 py-1 rounded border border-red-200 text-[11px] sm:text-xs font-medium">删除</a>
                             </div>
