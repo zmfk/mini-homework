@@ -1,5 +1,6 @@
 import os
 import io
+import csv
 import zipfile
 import requests
 import sqlite3
@@ -11,10 +12,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
+# ================= 安全配置 =================
+# 优先从环境变量读取，如果没配置则随机生成（防止GitHub源码泄露伪造Session）
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
+# ================= 路径配置 =================
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 
@@ -23,7 +27,7 @@ if not os.path.exists(DATA_DIR):
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(DATA_DIR, 'database.db')
 app.config['UPLOAD_FOLDER'] = os.path.join(DATA_DIR, 'uploads')
-app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024 
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024 # 限制 20MB
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -31,6 +35,7 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+# ================= 安全响应头 =================
 @app.after_request
 def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -39,10 +44,10 @@ def add_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
 
+# ================= 辅助函数 =================
 def get_bj_time():
     return datetime.utcnow() + timedelta(hours=8)
 
-# 辅助函数：计算文件夹真实大小 (MB)
 def get_folder_size(folder_path):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(folder_path):
@@ -55,11 +60,12 @@ def get_folder_size(folder_path):
                     pass
     return round(total_size / (1024 * 1024), 2)
 
+# ================= 数据库模型 =================
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), nullable=False)
+    role = db.Column(db.String(20), nullable=False) # 'admin', 'teacher', 'student'
     name = db.Column(db.String(50), nullable=False)
     class_name = db.Column(db.String(50), default='默认班级')
 
@@ -86,6 +92,7 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# ================= 服务器状态 API =================
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
     username = os.environ.get('PA_USERNAME')
@@ -104,9 +111,8 @@ def get_pa_stats():
     cpu_limit = cpu_data.get('daily_cpu_limit_seconds', 100)
     cpu_pct = round((cpu_usage / cpu_limit) * 100, 1) if cpu_limit else 0
     
-    # 动态计算磁盘占用：基础环境 + uploads文件夹大小
     upload_size = get_folder_size(app.config['UPLOAD_FOLDER'])
-    base_size = 5.25 # 基础系统环境预估占用（Python、Flask、代码等）
+    base_size = 5.25 
     app_disk_usage = round(base_size + upload_size, 2)
     
     disk_limit = 512.0
@@ -124,6 +130,7 @@ def get_pa_stats():
         'api_connected': bool(token and username)
     }
 
+# ================= 路由 =================
 @app.route('/')
 def index():
     if not current_user.is_authenticated:
@@ -146,6 +153,7 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+# ================= 学生/老师/管理员独立改密 =================
 @app.route('/change_password', methods=['GET', 'POST'])
 @login_required
 def change_password():
@@ -191,6 +199,7 @@ def submission_count():
     total = Submission.query.count()
     return jsonify({"total": total})
 
+# ================= 管理员面板 =================
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -292,6 +301,8 @@ def admin():
             sub.class_name = student_class_map.get(sub.student_id, '默认班级')
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
             sub.file_exists = os.path.exists(filepath)
+            sub_time_bj = sub.submit_time + timedelta(hours=8)
+            sub.is_late = sub_time_bj > a.deadline
         
         if a.class_name == '全部班级':
             target_students = [u for u in users if u.role in ['student', 'admin'] and u.username != 'admin']
@@ -325,6 +336,60 @@ def admin():
                            pa_stats=pa_stats,
                            all_classes=all_classes)
 
+# ================= 导出总表 =================
+@app.route('/admin/export_summary')
+@login_required
+def export_summary():
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    
+    users = User.query.order_by(User.class_name.asc(), User.username.asc()).all()
+    assignments = Assignment.query.order_by(Assignment.id.asc()).all()
+    
+    all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
+    
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for cls in all_classes:
+            students = [u for u in users if u.role == 'student' and u.class_name == cls]
+            if not students:
+                continue
+                
+            cls_assignments = [a for a in assignments if a.class_name == cls or a.class_name == '全部班级']
+            
+            si = io.StringIO()
+            si.write('\ufeff') 
+            cw = csv.writer(si)
+            
+            header = ['学号', '姓名']
+            for a in cls_assignments:
+                header.append(a.title)
+            cw.writerow(header)
+            
+            for stu in students:
+                row = [stu.username, stu.name]
+                for a in cls_assignments:
+                    sub = Submission.query.filter_by(assignment_id=a.id, student_id=stu.username).first()
+                    if sub:
+                        sub_time_bj = sub.submit_time + timedelta(hours=8)
+                        if sub_time_bj > a.deadline:
+                            row.append('已交(补交)')
+                        else:
+                            row.append('已交')
+                    else:
+                        row.append('未交')
+                cw.writerow(row)
+                
+            zf.writestr(f"{cls}_作业总表.csv", si.getvalue().encode('utf-8'))
+            
+    memory_file.seek(0)
+    return send_file(
+        memory_file, 
+        mimetype='application/zip', 
+        as_attachment=True, 
+        download_name=f"分班作业总表_{get_bj_time().strftime('%Y%m%d')}.zip"
+    )
+
+# ================= 归档与相关操作 =================
 @app.route('/admin/toggle_archive/<int:assignment_id>')
 @login_required
 def toggle_archive(assignment_id):
@@ -477,6 +542,7 @@ def delete_submission(submission_id):
         flash(f'已删除 {sub.student_name} 的提交记录。', 'success')
     return redirect(request.referrer or url_for('admin'))
 
+# ================= 老师面板 =================
 @app.route('/teacher')
 @login_required
 def teacher():
@@ -498,6 +564,8 @@ def teacher():
             sub.class_name = student_class_map.get(sub.student_id, '默认班级')
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
             sub.file_exists = os.path.exists(filepath)
+            sub_time_bj = sub.submit_time + timedelta(hours=8)
+            sub.is_late = sub_time_bj > a.deadline
         
         if a.class_name == '全部班级':
             target_students = all_students
@@ -514,6 +582,7 @@ def teacher():
     current_total_subs = Submission.query.count()
     return render_template('teacher.html', assignments=assignments, report=report, now=now_bj, current_total_subs=current_total_subs, all_classes=all_classes)
 
+# ================= 学生面板 =================
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
 def student():
@@ -588,6 +657,7 @@ def student_delete(assignment_id):
         flash('提交已撤回，你可以重新上传了。', 'success')
     return redirect(url_for('student'))
 
+# ================= 文件下载 =================
 @app.route('/download/<filename>')
 @login_required
 def download_file(filename):
@@ -596,6 +666,7 @@ def download_file(filename):
         flash('文件不存在或已被清理！', 'error')
         return redirect(request.referrer or url_for('index'))
 
+    # 防越权下载
     if current_user.role not in ['admin', 'teacher']:
         sub = Submission.query.filter_by(student_id=current_user.username, file_name=filename).first()
         if not sub:
@@ -604,6 +675,7 @@ def download_file(filename):
 
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
+# ================= 打包下载 =================
 @app.route('/download_zip/<int:assignment_id>')
 @login_required
 def download_zip(assignment_id):
@@ -628,7 +700,22 @@ def download_zip(assignment_id):
             sub_ids = [s.student_id for s in subs]
             not_sub = [f"{s.username}-{s.name}" for s in target_students if s.username not in sub_ids]
             
-            list_content = f"【{assignment.title}】(目标: {assignment.class_name})\n\n已交名单({len(subs)}人):\n" + "\n".join([f"{s.student_id}-{s.student_name}" for s in subs])
+            submitted_lines = []
+            for s in subs:
+                sub_time_bj = s.submit_time + timedelta(hours=8)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], s.file_name)
+                file_exists = os.path.exists(filepath)
+                
+                if sub_time_bj > assignment.deadline:
+                    late_tag = " (补交)"
+                elif not file_exists:
+                    late_tag = " (已发送)"
+                else:
+                    late_tag = ""
+                    
+                submitted_lines.append(f"{s.student_id}-{s.student_name}{late_tag}")
+            
+            list_content = f"【{assignment.title}】(目标: {assignment.class_name})\n\n已交名单({len(subs)}人):\n" + "\n".join(submitted_lines)
             list_content += f"\n\n未交名单({len(not_sub)}人):\n" + "\n".join(not_sub)
             zf.writestr('名单汇总.txt', list_content.encode('utf-8'))
             
@@ -645,7 +732,22 @@ def download_zip(assignment_id):
                 cls_sub_ids = [s.student_id for s in cls_subs]
                 cls_not_sub = [f"{s.username}-{s.name}" for s in cls_students if s.username not in cls_sub_ids]
                 
-                cls_list_content = f"【{assignment.title}】- {cls}班\n\n已交名单({len(cls_subs)}人):\n" + "\n".join([f"{s.student_id}-{s.student_name}" for s in cls_subs])
+                cls_submitted_lines = []
+                for s in cls_subs:
+                    sub_time_bj = s.submit_time + timedelta(hours=8)
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], s.file_name)
+                    file_exists = os.path.exists(filepath)
+                    
+                    if sub_time_bj > assignment.deadline:
+                        late_tag = " (补交)"
+                    elif not file_exists:
+                        late_tag = " (已发送)"
+                    else:
+                        late_tag = ""
+                        
+                    cls_submitted_lines.append(f"{s.student_id}-{s.student_name}{late_tag}")
+                
+                cls_list_content = f"【{assignment.title}】- {cls}班\n\n已交名单({len(cls_subs)}人):\n" + "\n".join(cls_submitted_lines)
                 cls_list_content += f"\n\n未交名单({len(cls_not_sub)}人):\n" + "\n".join(cls_not_sub)
                 
                 zf.writestr(f"{cls}/名单汇总_{cls}.txt", cls_list_content.encode('utf-8'))
@@ -662,6 +764,7 @@ def download_zip(assignment_id):
     
     return send_file(memory_file, download_name=f"{safe_class}_{safe_title}_打包.zip", as_attachment=True)
 
+# ================= 数据库初始化与迁移 =================
 with app.app_context():
     db.create_all()
     
