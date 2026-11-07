@@ -853,7 +853,12 @@ def student():
             
             if ext == '.docx':
                 try:
-                    with zipfile.ZipFile(file.stream) as zf:
+                    # 一次性读取文件内容到内存中
+                    file_bytes = file.read()
+                    file.stream.seek(0) # 重置指针，供后续保存文件使用
+                    
+                    # 使用 io.BytesIO 包装内存数据
+                    with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
                         if 'word/vbaProject.bin' in zf.namelist():
                             return jsonify({"success": False, "message": "检测到文件包含恶意宏，已被拒绝提交！"}), 400
                         
@@ -871,8 +876,17 @@ def student():
                                         "message": f"系统检测到您的 .docx 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n如果确认无误，请点击“确定”继续提交。"
                                     }), 400
 
-                except Exception:
-                    return jsonify({"success": False, "message": "文件损坏或格式不正确！"}), 400
+                except zipfile.BadZipFile:
+                    return jsonify({
+                        "success": False, 
+                        "message": "文件校验失败：这可能不是一个真实的 Word 文档，或者文件设置了【密码加密】导致无法解析。\n\n请取消文档密码，或另存为新的 .docx 文件后重试！"
+                    }), 400
+                except Exception as e:
+                    print(f"DOCX 解析异常: {str(e)}")
+                    return jsonify({
+                        "success": False, 
+                        "message": "文件损坏或格式不正确！请尝试用 Word/WPS 打开后，重新“另存为”上传。"
+                    }), 400
                 finally:
                     file.stream.seek(0) 
 
