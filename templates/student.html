@@ -24,7 +24,8 @@
                     <li>《{{ a.title }}》</li>
                     {% endfor %}
                 </ul>
-                <p class="mt-2 text-xs">如果作业尚未截止，请在下方列表点击【撤回重传】重新提交；如果已截止，请立即联系老师。</p>
+                <!-- 修正：区分未截止和已截止的文案 -->
+                <p class="mt-2 text-xs">如果作业尚未截止，请在下方列表点击【撤回重传】重新提交；如果作业已截止，请联系管理员处理。</p>
             </div>
         </div>
     </div>
@@ -124,13 +125,18 @@
                         <span class="truncate">文件已被管理员清理归档</span>
                     </div>
                 {% else %}
+                    <!-- 核心修正点：根据作业是否截止，展示不同文案 -->
                     <div class="text-sm text-red-600 font-bold flex items-center truncate pr-4">
                         <svg class="w-4 h-4 mr-2 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                        <span class="truncate">服务器读取异常，请重新上传</span>
+                        {% if is_expired %}
+                        <span class="truncate">文件丢失，请联系管理员</span>
+                        {% else %}
+                        <span class="truncate">文件异常，请重新上传</span>
+                        {% endif %}
                     </div>
                 {% endif %}
 
-                <!-- 核心修改：增加 not sub.is_cleared 判断。被清理归档的作业不允许撤回重传 -->
+                <!-- 只有未截止、且不是被管理员清理的，才显示撤回按钮 -->
                 {% if not is_expired and not sub.is_cleared %}
                 <a href="/student/delete/{{ a.id }}" onclick="return confirm('确定撤回重传吗？原文件将被删除。')" class="text-xs font-bold text-red-600 hover:text-red-800 bg-white px-2 py-1.5 rounded-md border border-red-200 whitespace-nowrap transition-colors shadow-sm">撤回重传</a>
                 {% endif %}
