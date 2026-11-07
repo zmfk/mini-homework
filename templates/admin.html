@@ -249,7 +249,7 @@
                                     </span>
                                     {% if a.check_keyword %}
                                     <span class="px-1.5 py-0.5 text-[10px] font-bold bg-yellow-50 text-yellow-600 border border-yellow-200 rounded" title="必须包含：{{ a.check_keyword }}">
-                                        🛡️ 模板校验
+                                        已开启必含词校验
                                     </span>
                                     {% endif %}
                                     {% if a.is_archived %}
@@ -310,6 +310,12 @@
                                 
                                 <span class="text-gray-300 hidden sm:inline">|</span>
                                 <a href="javascript:void(0)" data-id="{{ a.id }}" data-class="{{ a.class_name }}" onclick="promptChangeClass(this)" class="text-indigo-600 hover:underline mt-1 sm:mt-0">改班级</a>
+                                
+                                <span class="text-gray-300 sm:inline hidden">|</span>
+                                <!-- 必含词按钮 -->
+                                <a href="javascript:void(0)" data-id="{{ a.id }}" data-keyword="{{ a.check_keyword or '' }}" onclick="promptChangeKeyword(this)" class="{% if a.check_keyword %}text-yellow-600{% else %}text-gray-500{% endif %} hover:underline mt-1 sm:mt-0">
+                                    {% if a.check_keyword %}改校验词{% else %}加必含词{% endif %}
+                                </a>
                                 
                                 <span class="text-gray-300 sm:inline hidden">|</span>
                                 {% if a.is_archived %}
@@ -639,6 +645,33 @@
             form.submit();
         }
     }
+
+    // ====== 新增的修改必含词 JS ======
+    function promptChangeKeyword(btn) {
+        const assignmentId = btn.dataset.id;
+        const currentKeyword = btn.dataset.keyword || '';
+        
+        const hint = currentKeyword 
+            ? `当前必含词：${currentKeyword}\n\n请输入新的必含词（留空并确定 = 清除校验）：` 
+            : `该作业暂无必含词。\n\n请输入要校验的关键词（留空并确定 = 不设置）：`;
+        
+        let newKeyword = prompt(hint, currentKeyword);
+        if (newKeyword !== null) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/admin/update_keyword/${assignmentId}`;
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'new_keyword';
+            input.value = newKeyword.trim();
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+    // =================================
 
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', function() {

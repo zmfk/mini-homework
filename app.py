@@ -759,6 +759,23 @@ def update_class(assignment_id):
         flash(f'作业 [{a.title}] 目标班级已修改为: {new_class}', 'success')
     return redirect(url_for('admin'))
 
+# ====== 新增的更新必含词路由 ======
+@app.route('/admin/update_keyword/<int:assignment_id>', methods=['POST'])
+@login_required
+def update_keyword(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    new_keyword = request.form.get('new_keyword', '').strip()
+    if a:
+        a.check_keyword = new_keyword[:50] if new_keyword else None
+        db.session.commit()
+        if a.check_keyword:
+            flash(f'作业 [{a.title}] 的必含词已更新为: {a.check_keyword}', 'success')
+        else:
+            flash(f'作业 [{a.title}] 的必含词已清除（不再校验）', 'success')
+    return redirect(url_for('admin'))
+# ================================
+
 @app.route('/admin/delete_submission/<int:submission_id>')
 @login_required
 def delete_submission(submission_id):
