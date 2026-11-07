@@ -98,7 +98,8 @@ def load_user(user_id):
 
 @app.before_request
 def check_maintenance():
-    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'change_password']
+    # 移除了 change_password，使得维护期间学生无法修改密码
+    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page']
     if request.endpoint in allowed_endpoints:
         return
 
@@ -788,7 +789,6 @@ def student():
         
         if sub:
             submitted_assignments.append(a)
-            # 核心修改：只有文件不存在，且不是管理员主动清理的，才算异常丢失
             if not sub.file_exists and not sub.is_cleared:
                 lost_files.append(a)
         elif is_expired:
