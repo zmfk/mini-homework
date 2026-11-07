@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
+<!-- 核心优化：通过 order 类调整手机端(默认)和桌面端(lg)的显示顺序 -->
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full lg:h-[calc(100vh-5rem)] lg:overflow-hidden">
     
-    <!-- 左侧列 -->
-    <div class="lg:col-span-3 flex flex-col min-h-0 pb-4">
-        <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar">
+    <!-- 左侧列：在手机端排第 2，桌面端排第 1 -->
+    <div class="lg:col-span-3 flex flex-col min-h-0 pb-4 order-2 lg:order-1">
+        <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar lg:max-h-full">
             
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <div class="flex justify-between items-center mb-4">
@@ -52,7 +53,6 @@
                 {% endif %}
             </div>
 
-            <!-- 密码重置待办卡片（常驻） -->
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 relative overflow-hidden">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-sm font-bold text-gray-900 flex items-center">
@@ -97,7 +97,8 @@
                         <input type="text" name="message" value="{{ sys_config.message }}" required
                                class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
+                    <!-- 优化：小屏幕时单列，大屏幕双列 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div>
                             <label class="block text-[11px] text-gray-500 mb-1">开始时间</label>
                             <input type="datetime-local" name="start_time" value="{{ sys_config.start_time.strftime('%Y-%m-%dT%H:%M') if sys_config.start_time else '' }}" required
@@ -173,9 +174,9 @@
         </div>
     </div>
 
-    <!-- 中间列 -->
-    <div class="lg:col-span-6 flex flex-col min-h-0 pb-4">
-        <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar">
+    <!-- 中间列：在手机端排第 1，桌面端排第 2 -->
+    <div class="lg:col-span-6 flex flex-col min-h-0 pb-4 order-1 lg:order-2">
+        <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar lg:max-h-full">
             {% if need_backup %}
             <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-r-lg shadow-sm">
                 <h3 class="text-xs font-bold text-yellow-800 mb-1">备份提醒</h3>
@@ -390,9 +391,9 @@
         </div>
     </div>
 
-    <!-- 右侧列 -->
-    <div class="lg:col-span-3 flex flex-col min-h-0 pb-4">
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-full min-h-0">
+    <!-- 右侧列：在手机端排第 3，桌面端排第 3 -->
+    <div class="lg:col-span-3 flex flex-col min-h-0 pb-4 order-3 lg:order-3">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-full min-h-0 lg:max-h-full">
             <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
                 <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                 用户管理
@@ -472,7 +473,7 @@
     <button onclick="window.location.reload()" class="bg-white text-gray-900 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">立即刷新</button>
 </div>
 
-<!-- 新增：密码重置待办提示 -->
+<!-- 密码重置待办提示 -->
 <div id="reset-toast" class="fixed bottom-24 right-8 bg-blue-600 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
     <div class="flex items-center">
         <span class="relative flex h-3 w-3 mr-3">

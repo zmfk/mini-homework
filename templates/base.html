@@ -25,13 +25,13 @@
                             <path d='M50 52 L50 80' stroke='white' stroke-width='6' stroke-linejoin='round'/>
                         </svg>
                     </div>
-                    <span class="text-base sm:text-xl font-bold text-gray-900 tracking-tight whitespace-nowrap">作业提交系统</span>
+                    <span class="text-sm sm:text-xl font-bold text-gray-900 tracking-tight whitespace-nowrap hidden min-[400px]:inline-block">作业提交系统</span>
                 </a>
             </div>
             
             {% if current_user.is_authenticated %}
-            <div class="flex items-center space-x-2 sm:space-x-4 md:space-x-6">
-                <div class="flex items-center space-x-2 sm:space-x-4">
+            <div class="flex items-center space-x-1 sm:space-x-4 md:space-x-6">
+                <div class="flex items-center space-x-1 sm:space-x-4">
                     {% if current_user.role == 'admin' %}
                         <a href="/admin" class="text-xs sm:text-sm font-medium text-gray-600 hover:text-blue-600 whitespace-nowrap">管理后台</a>
                         <a href="/student" class="text-xs sm:text-sm font-medium text-gray-600 hover:text-blue-600 whitespace-nowrap">交作业</a>
@@ -52,8 +52,8 @@
                     </div>
                 </div>
 
-                <a href="{{ url_for('change_password') }}" class="text-xs sm:text-sm font-medium text-blue-500 hover:text-blue-700 transition-colors bg-blue-50 hover:bg-blue-100 px-2 sm:px-3 py-1.5 rounded-lg border border-blue-200 whitespace-nowrap">改密</a>
-                <a href="{{ url_for('logout') }}" class="text-xs sm:text-sm font-medium text-gray-500 hover:text-red-600 transition-colors bg-gray-50 hover:bg-red-50 px-2 sm:px-3 py-1.5 rounded-lg border border-gray-200 whitespace-nowrap">退出</a>
+                <a href="{{ url_for('change_password') }}" class="text-[11px] sm:text-sm font-medium text-blue-500 hover:text-blue-700 transition-colors bg-blue-50 hover:bg-blue-100 px-2 sm:px-3 py-1.5 rounded-lg border border-blue-200 whitespace-nowrap">改密</a>
+                <a href="{{ url_for('logout') }}" class="text-[11px] sm:text-sm font-medium text-gray-500 hover:text-red-600 transition-colors bg-gray-50 hover:bg-red-50 px-2 sm:px-3 py-1.5 rounded-lg border border-gray-200 whitespace-nowrap">退出</a>
             </div>
             {% endif %}
         </div>
