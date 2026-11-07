@@ -14,17 +14,14 @@
         <button type="submit" class="w-full bg-black text-white p-3 rounded-lg mt-2 hover:bg-gray-800 transition shadow-sm font-medium">登 录</button>
     </form>
 
-    <!-- 优化后的忘记密码区域 -->
     <div class="mt-8 pt-6 border-t border-gray-100 text-center">
         <p class="text-sm font-bold text-gray-800 mb-3">忘记密码？</p>
         
-        <!-- 主推：在线申请 -->
         <button type="button" onclick="toggleResetForm()" class="w-full bg-blue-50 text-blue-600 font-bold py-2.5 rounded-xl border border-blue-200 hover:bg-blue-100 transition-colors mb-3 flex items-center justify-center">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
             在线提交密码重置申请
         </button>
 
-        <!-- 备用：邮箱/联系老师 -->
         <p class="text-xs text-gray-400">
             {% if contact_email %}
                 若系统无法访问，请联系任课老师或发邮件至 <a href="mailto:{{ contact_email }}" class="text-blue-500 hover:underline">{{ contact_email }}</a>
@@ -44,6 +41,7 @@
                     <label class="block text-xs text-gray-600 mb-1">姓名</label>
                     <input type="text" id="reset-student-name" placeholder="请输入姓名" class="w-full border border-gray-300 p-2 rounded-lg focus:outline-none focus:border-blue-500 text-sm">
                 </div>
+                <div id="reset-msg" class="hidden text-sm p-2 rounded text-center"></div>
                 <button type="button" onclick="submitResetRequest()" class="w-full bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm shadow-md shadow-blue-500/20">
                     发送重置申请
                 </button>
@@ -55,19 +53,24 @@
 <script>
     function toggleResetForm() {
         const container = document.getElementById('resetFormContainer');
+        const msgBox = document.getElementById('reset-msg');
         if (container.classList.contains('hidden')) {
             container.classList.remove('hidden');
         } else {
             container.classList.add('hidden');
+            msgBox.classList.add('hidden');
         }
     }
 
     function submitResetRequest() {
         const studentId = document.getElementById('reset-student-id').value.trim();
         const studentName = document.getElementById('reset-student-name').value.trim();
+        const msgBox = document.getElementById('reset-msg');
 
         if (!studentId || !studentName) {
-            alert("请填写完整的学号和姓名！");
+            msgBox.textContent = "请填写完整的学号和姓名！";
+            msgBox.className = "text-sm text-red-600 bg-red-50 p-2 rounded text-center border border-red-200";
+            msgBox.classList.remove('hidden');
             return;
         }
 
@@ -80,15 +83,22 @@
         })
         .then(res => res.json())
         .then(data => {
-            alert(data.message);
+            msgBox.textContent = data.message;
+            msgBox.classList.remove('hidden');
+            
             if (data.success) {
+                msgBox.className = "text-sm text-green-600 bg-green-50 p-2 rounded text-center border border-green-200";
                 document.getElementById('reset-student-id').value = '';
                 document.getElementById('reset-student-name').value = '';
-                toggleResetForm();
+                setTimeout(() => { toggleResetForm(); msgBox.classList.add('hidden'); }, 4000);
+            } else {
+                msgBox.className = "text-sm text-red-600 bg-red-50 p-2 rounded text-center border border-red-200";
             }
         })
         .catch(err => {
-            alert("网络错误，请稍后再试！");
+            msgBox.textContent = "网络错误，请稍后再试！";
+            msgBox.className = "text-sm text-red-600 bg-red-50 p-2 rounded text-center border border-red-200";
+            msgBox.classList.remove('hidden');
         });
     }
 </script>

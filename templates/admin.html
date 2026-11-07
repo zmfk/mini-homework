@@ -52,6 +52,40 @@
                 {% endif %}
             </div>
 
+            <!-- 密码重置待办卡片（常驻） -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 relative overflow-hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-gray-900 flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                        密码重置待办
+                    </h3>
+                    {% if reset_requests|length > 0 %}
+                        <span class="px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 rounded-full border border-red-200 flex items-center animate-pulse">
+                            {{ reset_requests|length }} 个待处理
+                        </span>
+                    {% endif %}
+                </div>
+                
+                {% if reset_requests %}
+                    <div class="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                        {% for req in reset_requests %}
+                        <div class="bg-blue-50/50 p-2 rounded-lg border border-blue-100 flex items-center justify-between shadow-sm">
+                            <div class="min-w-0 pr-2">
+                                <p class="text-xs font-bold text-gray-800 truncate">{{ req.student_name }} ({{ req.student_id }})</p>
+                                <p class="text-[10px] text-gray-400">{{ req.request_time.strftime('%m-%d %H:%M') }}</p>
+                            </div>
+                            <div class="flex space-x-1 flex-shrink-0">
+                                <a href="/admin/handle_reset_request/{{ req.id }}" onclick="return confirm('确定将 {{ req.student_name }} 的密码重置为学号吗？')" class="text-[10px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded shadow-sm">同意</a>
+                                <a href="/admin/dismiss_reset_request/{{ req.id }}" onclick="return confirm('确定忽略此申请吗？')" class="text-[10px] bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded shadow-sm">忽略</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">暂无重置密码申请</p>
+                {% endif %}
+            </div>
+
             <div class="bg-white rounded-2xl shadow-sm border {% if sys_config.is_maintenance %}border-red-200 ring-2 ring-red-100{% else %}border-gray-100{% endif %} p-5 transition-all">
                 <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center">
                     <svg class="w-4 h-4 mr-2 {% if sys_config.is_maintenance %}text-red-500 animate-pulse{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
@@ -190,7 +224,6 @@
                             </div>
                         </div>
                         <div class="flex gap-2 flex-shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
-                            <!-- 核心修改：使用 data-* 属性来避免 JS 引号冲突 -->
                             <button data-title="{{ a.title }}" data-names="{{ report[a.id].lost_names_str }}" onclick="copyReminder(this)" class="flex-1 sm:flex-none text-xs bg-white text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded shadow-sm transition-colors text-center font-bold">
                                 复制提醒
                             </button>
@@ -425,8 +458,9 @@
     </div>
 </div>
 
-<div id="data-container" data-total-subs="{{ current_total_subs }}" class="hidden"></div>
+<div id="data-container" data-total-subs="{{ current_total_subs }}" data-reset-count="{{ reset_requests|length }}" class="hidden"></div>
 
+<!-- 作业提交提示 -->
 <div id="refresh-toast" class="fixed bottom-8 right-8 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
     <div class="flex items-center">
         <span class="relative flex h-3 w-3 mr-3">
@@ -438,8 +472,19 @@
     <button onclick="window.location.reload()" class="bg-white text-gray-900 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">立即刷新</button>
 </div>
 
+<!-- 新增：密码重置待办提示 -->
+<div id="reset-toast" class="fixed bottom-24 right-8 bg-blue-600 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
+    <div class="flex items-center">
+        <span class="relative flex h-3 w-3 mr-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-300 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+        </span>
+        <span class="font-medium text-sm">有新的密码重置申请！</span>
+    </div>
+    <button onclick="window.location.reload()" class="bg-white text-blue-600 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">查看待办</button>
+</div>
+
 <script>
-    // 核心修改：复制提醒改为从 data-* 属性中读取
     function copyReminder(btn) {
         const title = btn.getAttribute('data-title');
         const names = btn.getAttribute('data-names');
@@ -469,8 +514,11 @@
 
         const dataContainer = document.getElementById('data-container');
         let currentTotalSubs = parseInt(dataContainer.getAttribute('data-total-subs')) || 0;
+        let currentResetReqs = parseInt(dataContainer.getAttribute('data-reset-count')) || 0;
         
+        // 轮询检查新提交与新待办
         setInterval(function() {
+            // 检查作业
             fetch('/api/submission_count')
                 .then(res => res.ok ? res.json() : Promise.reject())
                 .then(data => {
@@ -479,7 +527,19 @@
                         currentTotalSubs = data.total; 
                     }
                 })
-                .catch(() => console.log("检查更新失败"));
+                .catch(() => console.log("检查作业更新失败"));
+            
+            // 检查重置请求
+            fetch('/api/check_reset_requests')
+                .then(res => res.ok ? res.json() : Promise.reject())
+                .then(data => {
+                    if (data.total > currentResetReqs) {
+                        document.getElementById('reset-toast').classList.remove('translate-y-20', 'opacity-0');
+                        currentResetReqs = data.total; 
+                    }
+                })
+                .catch(() => console.log("检查重置请求失败"));
+
         }, 60000);
 
         const searchInput = document.getElementById('userSearchInput');

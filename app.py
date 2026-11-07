@@ -92,7 +92,6 @@ class SystemConfig(db.Model):
     start_time = db.Column(db.DateTime, nullable=True)
     end_time = db.Column(db.DateTime, nullable=True)
 
-# 新增：密码重置请求表
 class PasswordResetRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.String(50), nullable=False)
@@ -103,9 +102,12 @@ class PasswordResetRequest(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+@app.context_processor
+def inject_sys_config():
+    return dict(sys_config=SystemConfig.query.first())
+
 @app.before_request
 def check_maintenance():
-    # 加入 api_request_reset，使得维护期间也能发重置密码申请
     allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'api_request_reset']
     if request.endpoint in allowed_endpoints:
         return
@@ -185,7 +187,6 @@ def login():
     contact_email = os.environ.get('CONTACT_EMAIL', '')
     return render_template('login.html', contact_email=contact_email)
 
-# 新增：接收学生的密码重置申请 API
 @app.route('/api/request_reset', methods=['POST'])
 def api_request_reset():
     data = request.get_json()
@@ -201,7 +202,6 @@ def api_request_reset():
     if user.name != student_name:
         return jsonify({"success": False, "message": "学号与姓名不匹配，请重新输入"})
 
-    # 防刷：检查是否已有未处理的申请
     existing_req = PasswordResetRequest.query.filter_by(student_id=student_id).first()
     if existing_req:
         return jsonify({"success": True, "message": "您已提交过申请，请耐心等待管理员处理"})
@@ -210,6 +210,14 @@ def api_request_reset():
     db.session.add(new_req)
     db.session.commit()
     return jsonify({"success": True, "message": "申请已发送，请等待管理员为您重置密码"})
+
+@app.route('/api/check_reset_requests')
+@login_required
+def check_reset_requests():
+    if current_user.role not in ['admin', 'teacher']:
+        return jsonify({"error": "unauthorized"}), 403
+    total = PasswordResetRequest.query.count()
+    return jsonify({"total": total})
 
 @app.route('/logout')
 @login_required
@@ -416,7 +424,6 @@ def admin():
     current_total_subs = Submission.query.count()
     sys_config = SystemConfig.query.first()
     
-    # 获取未处理的密码重置请求
     reset_requests = PasswordResetRequest.query.order_by(PasswordResetRequest.request_time.desc()).all()
 
     return render_template('admin.html', 
@@ -432,7 +439,6 @@ def admin():
                            sys_config=sys_config,
                            reset_requests=reset_requests)
 
-# 管理员：同意重置密码
 @app.route('/admin/handle_reset_request/<int:req_id>')
 @login_required
 def handle_reset_request(req_id):
@@ -451,7 +457,6 @@ def handle_reset_request(req_id):
             db.session.commit()
     return redirect(url_for('admin'))
 
-# 管理员：忽略请求
 @app.route('/admin/dismiss_reset_request/<int:req_id>')
 @login_required
 def dismiss_reset_request(req_id):
