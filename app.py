@@ -328,7 +328,7 @@ def admin():
                            pa_stats=pa_stats,
                            all_classes=all_classes)
 
-# ================= 核心修改：导出带有动态条件样式的 Excel (.xlsx) =================
+# ================= 核心修改：精简样式，突出逾期未交 =================
 @app.route('/admin/export_summary')
 @login_required
 def export_summary():
@@ -338,19 +338,19 @@ def export_summary():
     assignments = Assignment.query.order_by(Assignment.id.asc()).all()
     all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
     
-    # 预定义各种状态的颜色和字体样式
-    style_submitted = {'font': Font(color="006100")} # 绿色字
-    style_late = {
-        'fill': PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"), # 浅黄底
-        'font': Font(color="9C6500", bold=True) # 深黄粗体
-    }
-    style_pending = {
-        'fill': PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"), # 极浅黄底
-        'font': Font(color="B8860B") # 暗金色字
-    }
+    # 1. 正常已交：白底黑字（不设置填充，使用默认即可）
+    style_submitted = {'font': Font(color="000000")} 
+    
+    # 2. 补交：不要那么明显，使用浅灰色、斜体字，无背景色
+    style_late = {'font': Font(color="A6A6A6", italic=True)} 
+    
+    # 3. 未截止且未交：使用亮橙色粗体字作为温和提醒，不要大面积背景色
+    style_pending = {'font': Font(color="ED7D31", bold=True)} 
+    
+    # 4. 逾期未交（含手动唤出但已过截止时间的）：使用最醒目的浅红底 + 深红粗体字
     style_overdue = {
-        'fill': PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"), # 浅红底
-        'font': Font(color="9C0006", bold=True) # 深红粗体
+        'fill': PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"), 
+        'font': Font(color="9C0006", bold=True) 
     }
     
     now_bj = get_bj_time()
@@ -364,31 +364,28 @@ def export_summary():
                 
             cls_assignments = [a for a in assignments if a.class_name == cls or a.class_name == '全部班级']
             
-            # 创建 Excel 工作簿
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = f"{cls}班总表"
             
-            # 1. 写入表头
+            # 写入表头
             header = ['学号', '姓名'] + [a.title for a in cls_assignments]
             ws.append(header)
             
-            # 设置表头样式（加粗，居中，灰色背景）
             header_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
             for cell in ws[1]:
                 cell.font = Font(bold=True)
                 cell.fill = header_fill
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # 2. 写入学生数据并应用样式
+            # 写入学生数据并应用样式
             for stu in students:
-                # 核心修复：将学号作为字符串写入，防止科学计数法
                 row = [str(stu.username), stu.name]
-                col_styles = [] # 记录每个作业列对应的样式
+                col_styles = [] 
                 
                 for a in cls_assignments:
-                    # 判断该作业是否已经过期/截止
-                    is_past_deadline = a.is_forced_closed or (now_bj > a.deadline and not a.is_active)
+                    # 逻辑修正：不再考虑 is_active，只要当前时间过了设定截止时间，未交的一律视为逾期
+                    is_overdue = now_bj > a.deadline
                     
                     sub = Submission.query.filter_by(assignment_id=a.id, student_id=stu.username).first()
                     if sub:
@@ -401,45 +398,40 @@ def export_summary():
                             col_styles.append(style_submitted)
                     else:
                         row.append('未交')
-                        if is_past_deadline:
-                            col_styles.append(style_overdue) # 已截止且未交 -> 红色警报
+                        if is_overdue:
+                            col_styles.append(style_overdue) # 逾期未交 -> 红色警报
                         else:
-                            col_styles.append(style_pending) # 未截止且未交 -> 黄色提醒
+                            col_styles.append(style_pending) # 未到期未交 -> 橙色字体提醒
                             
                 ws.append(row)
                 
-                # 应用刚计算好的样式到当前行对应的单元格
                 current_row = ws.max_row
                 for idx, style_dict in enumerate(col_styles):
-                    cell = ws.cell(row=current_row, column=idx + 3) # 从第3列开始是作业列
+                    cell = ws.cell(row=current_row, column=idx + 3)
                     cell.alignment = Alignment(horizontal='center', vertical='center')
                     if 'fill' in style_dict:
                         cell.fill = style_dict['fill']
                     if 'font' in style_dict:
                         cell.font = style_dict['font']
                 
-            # 3. 自动调整列宽
+            # 调整列宽
             for col_idx, column_cells in enumerate(ws.columns, 1):
                 max_length = 0
                 column_letter = get_column_letter(col_idx)
                 for cell in column_cells:
                     try:
                         if cell.value:
-                            # 计算字符串长度，中文字符算作2个长度
                             length = sum(2 if ord(c) > 127 else 1 for c in str(cell.value))
                             if length > max_length:
                                 max_length = length
                     except:
                         pass
-                # 设定列宽为最长内容加上一点边距
                 ws.column_dimensions[column_letter].width = max_length + 4
                 
-            # 4. 保存 Excel 到内存
             excel_stream = io.BytesIO()
             wb.save(excel_stream)
             excel_stream.seek(0)
             
-            # 写入 ZIP
             zf.writestr(f"{cls}_作业总表.xlsx", excel_stream.getvalue())
             
     memory_file.seek(0)
