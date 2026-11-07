@@ -788,7 +788,8 @@ def student():
         
         if sub:
             submitted_assignments.append(a)
-            if not sub.file_exists:
+            # 核心修改：只有文件不存在，且不是管理员主动清理的，才算异常丢失
+            if not sub.file_exists and not sub.is_cleared:
                 lost_files.append(a)
         elif is_expired:
             overdue_assignments.append(a)
