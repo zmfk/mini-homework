@@ -1,6 +1,5 @@
 import os
 import io
-import csv
 import zipfile
 import requests
 import sqlite3
@@ -9,16 +8,16 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+import openpyxl
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 
 app = Flask(__name__)
 
-# ================= 安全配置 =================
-# 优先从环境变量读取，如果没配置则随机生成（防止GitHub源码泄露伪造Session）
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# ================= 路径配置 =================
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 
@@ -27,7 +26,7 @@ if not os.path.exists(DATA_DIR):
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(DATA_DIR, 'database.db')
 app.config['UPLOAD_FOLDER'] = os.path.join(DATA_DIR, 'uploads')
-app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024 # 限制 20MB
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024 
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -35,7 +34,6 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# ================= 安全响应头 =================
 @app.after_request
 def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -44,7 +42,6 @@ def add_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
 
-# ================= 辅助函数 =================
 def get_bj_time():
     return datetime.utcnow() + timedelta(hours=8)
 
@@ -60,12 +57,11 @@ def get_folder_size(folder_path):
                     pass
     return round(total_size / (1024 * 1024), 2)
 
-# ================= 数据库模型 =================
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), nullable=False) # 'admin', 'teacher', 'student'
+    role = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(50), nullable=False)
     class_name = db.Column(db.String(50), default='默认班级')
 
@@ -92,7 +88,6 @@ class Submission(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ================= 服务器状态 API =================
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
     username = os.environ.get('PA_USERNAME')
@@ -130,7 +125,6 @@ def get_pa_stats():
         'api_connected': bool(token and username)
     }
 
-# ================= 路由 =================
 @app.route('/')
 def index():
     if not current_user.is_authenticated:
@@ -153,7 +147,6 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# ================= 学生/老师/管理员独立改密 =================
 @app.route('/change_password', methods=['GET', 'POST'])
 @login_required
 def change_password():
@@ -199,7 +192,6 @@ def submission_count():
     total = Submission.query.count()
     return jsonify({"total": total})
 
-# ================= 管理员面板 =================
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -336,7 +328,7 @@ def admin():
                            pa_stats=pa_stats,
                            all_classes=all_classes)
 
-# ================= 导出总表 =================
+# ================= 核心修改：导出真正的 Excel (.xlsx) =================
 @app.route('/admin/export_summary')
 @login_required
 def export_summary():
@@ -344,7 +336,6 @@ def export_summary():
     
     users = User.query.order_by(User.class_name.asc(), User.username.asc()).all()
     assignments = Assignment.query.order_by(Assignment.id.asc()).all()
-    
     all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
     
     memory_file = io.BytesIO()
@@ -356,17 +347,24 @@ def export_summary():
                 
             cls_assignments = [a for a in assignments if a.class_name == cls or a.class_name == '全部班级']
             
-            si = io.StringIO()
-            si.write('\ufeff') 
-            cw = csv.writer(si)
+            # 创建 Excel 工作簿
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = f"{cls}班总表"
             
-            header = ['学号', '姓名']
-            for a in cls_assignments:
-                header.append(a.title)
-            cw.writerow(header)
+            # 1. 写入表头
+            header = ['学号', '姓名'] + [a.title for a in cls_assignments]
+            ws.append(header)
             
+            # 设置表头样式（加粗，居中）
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # 2. 写入学生数据
             for stu in students:
-                row = [stu.username, stu.name]
+                # 核心修复：将学号作为字符串写入，防止科学计数法
+                row = [str(stu.username), stu.name]
                 for a in cls_assignments:
                     sub = Submission.query.filter_by(assignment_id=a.id, student_id=stu.username).first()
                     if sub:
@@ -377,9 +375,31 @@ def export_summary():
                             row.append('已交')
                     else:
                         row.append('未交')
-                cw.writerow(row)
+                ws.append(row)
                 
-            zf.writestr(f"{cls}_作业总表.csv", si.getvalue().encode('utf-8'))
+            # 3. 核心修复：自动调整列宽，解决课程名太长的问题
+            for col_idx, column_cells in enumerate(ws.columns, 1):
+                max_length = 0
+                column_letter = get_column_letter(col_idx)
+                for cell in column_cells:
+                    try:
+                        if cell.value:
+                            # 计算字符串长度，中文字符算作2个长度
+                            length = sum(2 if ord(c) > 127 else 1 for c in str(cell.value))
+                            if length > max_length:
+                                max_length = length
+                    except:
+                        pass
+                # 设定列宽为最长内容加上一点边距
+                ws.column_dimensions[column_letter].width = max_length + 4
+                
+            # 4. 保存 Excel 到内存
+            excel_stream = io.BytesIO()
+            wb.save(excel_stream)
+            excel_stream.seek(0)
+            
+            # 写入 ZIP
+            zf.writestr(f"{cls}_作业总表.xlsx", excel_stream.getvalue())
             
     memory_file.seek(0)
     return send_file(
@@ -389,7 +409,6 @@ def export_summary():
         download_name=f"分班作业总表_{get_bj_time().strftime('%Y%m%d')}.zip"
     )
 
-# ================= 归档与相关操作 =================
 @app.route('/admin/toggle_archive/<int:assignment_id>')
 @login_required
 def toggle_archive(assignment_id):
@@ -542,7 +561,6 @@ def delete_submission(submission_id):
         flash(f'已删除 {sub.student_name} 的提交记录。', 'success')
     return redirect(request.referrer or url_for('admin'))
 
-# ================= 老师面板 =================
 @app.route('/teacher')
 @login_required
 def teacher():
@@ -582,7 +600,6 @@ def teacher():
     current_total_subs = Submission.query.count()
     return render_template('teacher.html', assignments=assignments, report=report, now=now_bj, current_total_subs=current_total_subs, all_classes=all_classes)
 
-# ================= 学生面板 =================
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
 def student():
@@ -657,7 +674,6 @@ def student_delete(assignment_id):
         flash('提交已撤回，你可以重新上传了。', 'success')
     return redirect(url_for('student'))
 
-# ================= 文件下载 =================
 @app.route('/download/<filename>')
 @login_required
 def download_file(filename):
@@ -666,7 +682,6 @@ def download_file(filename):
         flash('文件不存在或已被清理！', 'error')
         return redirect(request.referrer or url_for('index'))
 
-    # 防越权下载
     if current_user.role not in ['admin', 'teacher']:
         sub = Submission.query.filter_by(student_id=current_user.username, file_name=filename).first()
         if not sub:
@@ -675,7 +690,6 @@ def download_file(filename):
 
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
-# ================= 打包下载 =================
 @app.route('/download_zip/<int:assignment_id>')
 @login_required
 def download_zip(assignment_id):
@@ -764,7 +778,6 @@ def download_zip(assignment_id):
     
     return send_file(memory_file, download_name=f"{safe_class}_{safe_title}_打包.zip", as_attachment=True)
 
-# ================= 数据库初始化与迁移 =================
 with app.app_context():
     db.create_all()
     
