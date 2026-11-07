@@ -77,7 +77,7 @@ class Assignment(db.Model):
     last_download_count = db.Column(db.Integer, default=0)
     class_name = db.Column(db.String(50), default='全部班级')
     check_keyword = db.Column(db.String(50), nullable=True)
-    exclude_keyword = db.Column(db.String(255), nullable=True) # 保留字段防止数据库报错，但代码不再使用
+    exclude_keyword = db.Column(db.String(255), nullable=True) 
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -846,12 +846,12 @@ def student():
                                 text_content = re.sub(r'<[^>]+>', '', xml_content)
                                 clean_text = re.sub(r'\s+', '', text_content)
                                 
-                                # 检查必含词
+                                # 柔和版提示词
                                 if assignment.check_keyword not in clean_text:
                                     return jsonify({
                                         "success": False, 
                                         "warning": True, 
-                                        "message": f"系统检测到您的 .docx 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n确定要强行提交吗？"
+                                        "message": f"系统检测到您的 .docx 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n如果确认无误，请点击“确定”继续提交。"
                                     }), 400
 
                 except Exception:
@@ -868,12 +868,11 @@ def student():
                         
                         clean_text = re.sub(r'\s+', '', text_content)
                         
-                        # 检查必含词
                         if assignment.check_keyword not in clean_text:
                             return jsonify({
                                 "success": False, 
                                 "warning": True, 
-                                "message": f"系统在您的 .doc 文件中没有找到【{assignment.check_keyword}】。\n\n(注：.doc 为老格式，如果确认没传错，请点击确定继续提交)"
+                                "message": f"系统在您的 .doc 文件中没有找到【{assignment.check_keyword}】。\n\n(注：.doc 为老格式，如果确认没传错，请点击“确定”继续提交)"
                             }), 400
 
                     except Exception:
