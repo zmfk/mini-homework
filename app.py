@@ -187,9 +187,6 @@ def login():
     contact_email = os.environ.get('CONTACT_EMAIL', '')
     return render_template('login.html', contact_email=contact_email)
 
-# ==========================================
-# 核心修改：修复信息泄露漏洞
-# ==========================================
 @app.route('/api/request_reset', methods=['POST'])
 def api_request_reset():
     data = request.get_json()
@@ -201,7 +198,6 @@ def api_request_reset():
 
     user = User.query.filter_by(username=student_id).first()
     
-    # 统一错误提示，无论学号不存在还是姓名不匹配，都返回相同信息
     if not user or user.name != student_name:
         return jsonify({"success": False, "message": "学号或姓名错误，请检查输入"})
 
@@ -299,6 +295,10 @@ def toggle_maintenance():
 def admin():
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
+    # 提前获取所有班级，用于发布作业防呆校验
+    all_users = User.query.all()
+    valid_classes = sorted(list(set([u.class_name for u in all_users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
+
     if request.method == 'POST' and 'create_assignment' in request.form:
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
@@ -310,6 +310,17 @@ def admin():
 
         if title and deadline_str:
             deadline = datetime.strptime(deadline_str, '%Y-%m-%dT%H:%M')
+            
+            # ================= 新增防呆 1：拦截过去的时间 =================
+            if deadline < get_bj_time():
+                flash('🚨 发布失败：截止时间不能早于当前时间，请重新选择！', 'error')
+                return redirect(url_for('admin'))
+                
+            # ================= 新增防呆 2：拦截不存在的班级 =================
+            if target_class != '全部班级' and target_class not in valid_classes:
+                flash(f'⚠️ 发布失败：系统里不存在名为 [{target_class}] 的班级，请检查是否打错字！', 'error')
+                return redirect(url_for('admin'))
+
             db.session.add(Assignment(
                 title=title, 
                 deadline=deadline, 
@@ -323,6 +334,8 @@ def admin():
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
         count = 0
+        invalid_count = 0  # 新增：错误行计数器
+        
         for line in lines:
             line_str = line.strip()
             if not line_str or '学号' in line_str or '姓名' in line_str:
@@ -334,6 +347,13 @@ def admin():
             if len(parts) >= 2:
                 username = parts[0].strip()
                 name = parts[1].strip()
+                
+                # ================= 新增防呆 3：拦截乱码学号 =================
+                if not username.isdigit():
+                    invalid_count += 1
+                    continue
+                # ==========================================================
+
                 class_name = parts[2].strip() if len(parts) >= 3 else '默认班级'
                 role = 'student'
                 
@@ -359,7 +379,11 @@ def admin():
                     if role != 'student':
                         existing_user.role = role
         db.session.commit()
-        flash(f'成功处理 {count} 名新用户！', 'success')
+        
+        if invalid_count > 0:
+            flash(f'成功处理 {count} 名新用户！另有 {invalid_count} 行因格式错误（学号非纯数字）被自动跳过。', 'success')
+        else:
+            flash(f'成功处理 {count} 名新用户！', 'success')
 
     if request.method == 'POST' and 'change_password' in request.form:
         user = User.query.get(request.form.get('user_id'))
@@ -709,6 +733,12 @@ def update_deadline(assignment_id):
     if a and new_time_str:
         try:
             new_time = datetime.strptime(new_time_str, '%Y-%m-%dT%H:%M')
+            
+            # ================= 新增防呆：改时间也不能改到过去 =================
+            if new_time < get_bj_time():
+                flash('🚨 修改失败：截止时间不能早于当前时间！', 'error')
+                return redirect(url_for('admin'))
+
             a.deadline = new_time
             a.is_forced_closed = False 
             db.session.commit()
