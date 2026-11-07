@@ -85,9 +85,42 @@ class Submission(db.Model):
     submit_time = db.Column(db.DateTime, server_default=db.func.now())
     is_cleared = db.Column(db.Boolean, default=False) 
 
+class SystemConfig(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    is_maintenance = db.Column(db.Boolean, default=False)
+    message = db.Column(db.String(255), default='系统正在进行维护升级，暂时无法访问。预计很快恢复，请稍后再试。')
+    start_time = db.Column(db.DateTime, nullable=True)
+    end_time = db.Column(db.DateTime, nullable=True)
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+@app.before_request
+def check_maintenance():
+    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'change_password']
+    if request.endpoint in allowed_endpoints:
+        return
+
+    if current_user.is_authenticated and current_user.role in ['admin', 'teacher']:
+        return
+
+    try:
+        config = SystemConfig.query.first()
+        if config and config.is_maintenance:
+            if request.method == 'POST' or request.path.startswith('/api/'):
+                return jsonify({"error": "maintenance", "message": config.message}), 503
+            return redirect(url_for('maintenance_page'))
+    except Exception:
+        pass 
+
+@app.route('/maintenance')
+def maintenance_page():
+    config = SystemConfig.query.first()
+    msg = config.message if config else '系统维护中...'
+    start_str = config.start_time.strftime('%Y-%m-%d %H:%M') if config and config.start_time else None
+    end_str = config.end_time.strftime('%Y-%m-%d %H:%M') if config and config.end_time else None
+    return render_template('maintenance.html', message=msg, start_time=start_str, end_time=end_str)
 
 def get_pa_stats():
     token = os.environ.get('PA_TOKEN')
@@ -192,6 +225,28 @@ def submission_count():
         return jsonify({"error": "unauthorized"}), 403
     total = Submission.query.count()
     return jsonify({"total": total})
+
+@app.route('/admin/toggle_maintenance', methods=['POST'])
+@login_required
+def toggle_maintenance():
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    config = SystemConfig.query.first()
+    if config:
+        config.message = request.form.get('message', config.message).strip()
+        
+        start_str = request.form.get('start_time')
+        end_str = request.form.get('end_time')
+        
+        if start_str:
+            config.start_time = datetime.strptime(start_str, '%Y-%m-%dT%H:%M')
+        if end_str:
+            config.end_time = datetime.strptime(end_str, '%Y-%m-%dT%H:%M')
+            
+        config.is_maintenance = not config.is_maintenance
+        db.session.commit()
+        status = "开启" if config.is_maintenance else "关闭"
+        flash(f'系统维护模式已{status}！', 'success')
+    return redirect(url_for('admin'))
 
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
@@ -309,7 +364,15 @@ def admin():
         subs.sort(key=lambda x: (x.class_name, x.student_id))
         not_submitted.sort(key=lambda x: (x.class_name, x.username))
         
-        report[a.id] = {'submitted': subs, 'not_submitted': not_submitted}
+        # 提前计算丢失文件名单，方便前端调用
+        lost_names = [sub.student_name for sub in subs if not sub.file_exists and not sub.is_cleared]
+        
+        report[a.id] = {
+            'submitted': subs, 
+            'not_submitted': not_submitted,
+            'lost_names': lost_names,
+            'lost_names_str': '、'.join(lost_names)
+        }
         
         is_closed = a.is_forced_closed or (now_bj > a.deadline and not a.is_active)
         if is_closed and len(subs) > 0 and len(subs) > a.last_download_count:
@@ -317,6 +380,7 @@ def admin():
 
     pa_stats = get_pa_stats()
     current_total_subs = Submission.query.count()
+    sys_config = SystemConfig.query.first()
 
     return render_template('admin.html', 
                            users=users, 
@@ -327,7 +391,8 @@ def admin():
                            need_backup=need_backup,
                            current_total_subs=current_total_subs,
                            pa_stats=pa_stats,
-                           all_classes=all_classes)
+                           all_classes=all_classes,
+                           sys_config=sys_config)
 
 @app.route('/admin/export_summary')
 @login_required
@@ -504,6 +569,21 @@ def clear_files(assignment_id):
     db.session.commit()
     flash(f'已清空 {count} 个物理文件，已交名单和记录已保留！', 'success')
     return redirect(url_for('admin'))
+
+@app.route('/admin/mark_lost_as_cleared/<int:assignment_id>')
+@login_required
+def mark_lost_as_cleared(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    subs = Submission.query.filter_by(assignment_id=assignment_id).all()
+    fixed_count = 0
+    for sub in subs:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+        if not os.path.exists(filepath) and not sub.is_cleared:
+            sub.is_cleared = True
+            fixed_count += 1
+    db.session.commit()
+    flash(f'已将 {fixed_count} 个丢失的文件记录标记为“管理员已清理”，名单已保留。', 'success')
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/toggle_assignment/<int:id>')
 @login_required
@@ -690,11 +770,17 @@ def student():
     ).order_by(Assignment.id.desc()).all()
     
     my_subs = {s.assignment_id: s for s in Submission.query.filter_by(student_id=current_user.username).all()}
+    
+    for s in my_subs.values():
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], s.file_name)
+        s.file_exists = os.path.exists(filepath)
+        
     now_bj = get_bj_time()
 
     pending_assignments = []
     overdue_assignments = []
     submitted_assignments = []
+    lost_files = [] 
 
     for a in assignments:
         sub = my_subs.get(a.id)
@@ -702,6 +788,8 @@ def student():
         
         if sub:
             submitted_assignments.append(a)
+            if not sub.file_exists:
+                lost_files.append(a)
         elif is_expired:
             overdue_assignments.append(a)
         else:
@@ -712,7 +800,6 @@ def student():
     pending_count = len(pending_assignments)
     overdue_count = len(overdue_assignments)
 
-    # 在后端计算好百分比，避免前端模板报错
     percent = 0
     if total_count > 0:
         percent = int(round(submitted_count / total_count * 100))
@@ -721,6 +808,7 @@ def student():
                            pending_assignments=pending_assignments,
                            overdue_assignments=overdue_assignments,
                            submitted_assignments=submitted_assignments,
+                           lost_files=lost_files, 
                            my_subs=my_subs, 
                            now=now_bj,
                            total_count=total_count,
@@ -881,11 +969,25 @@ with app.app_context():
         if 'is_cleared' not in sub_columns:
             cursor.execute("ALTER TABLE submission ADD COLUMN is_cleared BOOLEAN DEFAULT 0")
             conn.commit()
+
+        cursor.execute("PRAGMA table_info(system_config)")
+        sys_columns = [col[1] for col in cursor.fetchall()]
+        if sys_columns: 
+            if 'start_time' not in sys_columns:
+                cursor.execute("ALTER TABLE system_config ADD COLUMN start_time DATETIME")
+                conn.commit()
+            if 'end_time' not in sys_columns:
+                cursor.execute("ALTER TABLE system_config ADD COLUMN end_time DATETIME")
+                conn.commit()
             
         conn.close()
 
     if not User.query.filter_by(username='admin').first():
         db.session.add(User(username='admin', password_hash=generate_password_hash('admin123'), role='admin', name='超级管理员', class_name='系统'))
+        db.session.commit()
+    
+    if not SystemConfig.query.first():
+        db.session.add(SystemConfig())
         db.session.commit()
 
 if __name__ == '__main__':

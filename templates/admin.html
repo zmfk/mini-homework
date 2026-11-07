@@ -52,6 +52,35 @@
                 {% endif %}
             </div>
 
+            <div class="bg-white rounded-2xl shadow-sm border {% if sys_config.is_maintenance %}border-red-200 ring-2 ring-red-100{% else %}border-gray-100{% endif %} p-5 transition-all">
+                <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center">
+                    <svg class="w-4 h-4 mr-2 {% if sys_config.is_maintenance %}text-red-500 animate-pulse{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    系统维护控制
+                </h3>
+                <form method="POST" action="/admin/toggle_maintenance" class="space-y-3">
+                    <div>
+                        <label class="block text-[11px] text-gray-500 mb-1">维护提示语（学生端可见）</label>
+                        <input type="text" name="message" value="{{ sys_config.message }}" required
+                               class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[11px] text-gray-500 mb-1">开始时间</label>
+                            <input type="datetime-local" name="start_time" value="{{ sys_config.start_time.strftime('%Y-%m-%dT%H:%M') if sys_config.start_time else '' }}" required
+                                   class="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-gray-500 mb-1">结束时间</label>
+                            <input type="datetime-local" name="end_time" value="{{ sys_config.end_time.strftime('%Y-%m-%dT%H:%M') if sys_config.end_time else '' }}" required
+                                   class="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full text-white font-medium py-2 rounded-lg transition-all shadow-sm text-xs {% if sys_config.is_maintenance %}bg-red-600 hover:bg-red-700{% else %}bg-gray-700 hover:bg-gray-800{% endif %}">
+                        {% if sys_config.is_maintenance %}解除维护，恢复学生访问{% else %}开启维护，禁止学生访问{% endif %}
+                    </button>
+                </form>
+            </div>
+
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
                     <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
@@ -146,6 +175,32 @@
             <div class="space-y-5" id="assignmentContainer">
                 {% for a in assignments %}
                 <div id="assignment-card-{{ a.id }}" class="assignment-card bg-white rounded-2xl shadow-sm border {% if a.is_archived %}border-gray-300 bg-gray-50/50{% else %}border-gray-100{% endif %} overflow-hidden hover:shadow-md transition-shadow" data-archived="{{ 'true' if a.is_archived else 'false' }}">
+                    
+                    {% if report[a.id].lost_names %}
+                    <div class="bg-red-50 px-4 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-red-100 gap-3">
+                        <div class="text-xs text-red-700 min-w-0">
+                            <div class="font-bold flex items-center mb-1">
+                                <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                检测到以下 {{ report[a.id].lost_names|length }} 个学生文件异常丢失：
+                            </div>
+                            <div class="pl-5 flex flex-wrap gap-1.5 mt-1">
+                                {% for name in report[a.id].lost_names %}
+                                    <span class="bg-white px-1.5 py-0.5 rounded border border-red-200 font-bold text-[11px]">{{ name }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="flex gap-2 flex-shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
+                            <!-- 核心修改：使用 data-* 属性来避免 JS 引号冲突 -->
+                            <button data-title="{{ a.title }}" data-names="{{ report[a.id].lost_names_str }}" onclick="copyReminder(this)" class="flex-1 sm:flex-none text-xs bg-white text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded shadow-sm transition-colors text-center font-bold">
+                                复制提醒
+                            </button>
+                            <a href="/admin/mark_lost_as_cleared/{{ a.id }}" onclick="return confirm('确定把丢失的文件标记为“管理员已清理”吗？此操作会清空红色警告并保留名单。')" class="flex-1 sm:flex-none text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded shadow-sm transition-colors text-center font-bold">
+                                标记已清理
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <div class="p-4 border-b border-gray-100">
                         <div class="flex flex-col gap-2">
                             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
@@ -384,6 +439,20 @@
 </div>
 
 <script>
+    // 核心修改：复制提醒改为从 data-* 属性中读取
+    function copyReminder(btn) {
+        const title = btn.getAttribute('data-title');
+        const names = btn.getAttribute('data-names');
+        
+        const text = `【重要通知】\n以下同学提交的《${title}》作业文件在服务器上意外丢失：\n${names}\n\n请以上同学尽快登录系统重新上传该作业！如果在截止时间前，可以直接在列表撤回重传。`;
+        
+        navigator.clipboard.writeText(text).then(() => {
+            alert("提醒文本已复制，快去粘贴到群里通知学生吧！");
+        }).catch(err => {
+            alert("复制失败，请手动截图或手写通知。");
+        });
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
         document.querySelectorAll('.dynamic-stat-bar').forEach(el => {
             el.style.width = el.getAttribute('data-width');
