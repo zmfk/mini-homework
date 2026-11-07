@@ -9,7 +9,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import openpyxl
-from openpyxl.styles import Font, Alignment
+from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
 app = Flask(__name__)
@@ -328,7 +328,7 @@ def admin():
                            pa_stats=pa_stats,
                            all_classes=all_classes)
 
-# ================= 核心修改：导出真正的 Excel (.xlsx) =================
+# ================= 核心修改：导出带有动态条件样式的 Excel (.xlsx) =================
 @app.route('/admin/export_summary')
 @login_required
 def export_summary():
@@ -338,6 +338,23 @@ def export_summary():
     assignments = Assignment.query.order_by(Assignment.id.asc()).all()
     all_classes = sorted(list(set([u.class_name for u in users if u.role == 'student' and u.class_name])))
     
+    # 预定义各种状态的颜色和字体样式
+    style_submitted = {'font': Font(color="006100")} # 绿色字
+    style_late = {
+        'fill': PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"), # 浅黄底
+        'font': Font(color="9C6500", bold=True) # 深黄粗体
+    }
+    style_pending = {
+        'fill': PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"), # 极浅黄底
+        'font': Font(color="B8860B") # 暗金色字
+    }
+    style_overdue = {
+        'fill': PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"), # 浅红底
+        'font': Font(color="9C0006", bold=True) # 深红粗体
+    }
+    
+    now_bj = get_bj_time()
+
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for cls in all_classes:
@@ -356,28 +373,52 @@ def export_summary():
             header = ['学号', '姓名'] + [a.title for a in cls_assignments]
             ws.append(header)
             
-            # 设置表头样式（加粗，居中）
+            # 设置表头样式（加粗，居中，灰色背景）
+            header_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
             for cell in ws[1]:
                 cell.font = Font(bold=True)
+                cell.fill = header_fill
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # 2. 写入学生数据
+            # 2. 写入学生数据并应用样式
             for stu in students:
                 # 核心修复：将学号作为字符串写入，防止科学计数法
                 row = [str(stu.username), stu.name]
+                col_styles = [] # 记录每个作业列对应的样式
+                
                 for a in cls_assignments:
+                    # 判断该作业是否已经过期/截止
+                    is_past_deadline = a.is_forced_closed or (now_bj > a.deadline and not a.is_active)
+                    
                     sub = Submission.query.filter_by(assignment_id=a.id, student_id=stu.username).first()
                     if sub:
                         sub_time_bj = sub.submit_time + timedelta(hours=8)
                         if sub_time_bj > a.deadline:
                             row.append('已交(补交)')
+                            col_styles.append(style_late)
                         else:
                             row.append('已交')
+                            col_styles.append(style_submitted)
                     else:
                         row.append('未交')
+                        if is_past_deadline:
+                            col_styles.append(style_overdue) # 已截止且未交 -> 红色警报
+                        else:
+                            col_styles.append(style_pending) # 未截止且未交 -> 黄色提醒
+                            
                 ws.append(row)
                 
-            # 3. 核心修复：自动调整列宽，解决课程名太长的问题
+                # 应用刚计算好的样式到当前行对应的单元格
+                current_row = ws.max_row
+                for idx, style_dict in enumerate(col_styles):
+                    cell = ws.cell(row=current_row, column=idx + 3) # 从第3列开始是作业列
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                    if 'fill' in style_dict:
+                        cell.fill = style_dict['fill']
+                    if 'font' in style_dict:
+                        cell.font = style_dict['font']
+                
+            # 3. 自动调整列宽
             for col_idx, column_cells in enumerate(ws.columns, 1):
                 max_length = 0
                 column_letter = get_column_letter(col_idx)
