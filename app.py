@@ -58,6 +58,41 @@ def get_folder_size(folder_path):
                     pass
     return round(total_size / (1024 * 1024), 2)
 
+# ==========================================
+# 新增：通用的 Word 文本提取器
+# ==========================================
+def extract_text_from_word(file_bytes):
+    text_content = ""
+    has_macro = False
+    
+    # 尝试1：当做 docx (ZIP) 解析
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            if 'word/vbaProject.bin' in zf.namelist():
+                has_macro = True
+            
+            if 'word/document.xml' in zf.namelist():
+                xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
+                # 将各种标签替换为空格，防止单词粘连，随后统一去空格匹配
+                text_content = re.sub(r'<[^>]+>', ' ', xml_content)
+                return text_content, has_macro
+    except Exception:
+        pass # 不是 zip 格式，说明大概率是老版 doc，或者文件损坏
+        
+    # 尝试2：当做 doc (二进制流) 暴力提取
+    # 老版 doc 通常内部包含大量 utf-16-le 编码的文本，同时也混杂其它编码
+    try:
+        text_utf16 = file_bytes.decode('utf-16-le', errors='ignore')
+        text_utf8 = file_bytes.decode('utf-8', errors='ignore')
+        text_gbk = file_bytes.decode('gbk', errors='ignore')
+        # 三种方式暴力解码后拼接在一起，宁可多抓不能漏抓
+        text_content = text_utf16 + " " + text_utf8 + " " + text_gbk
+    except Exception:
+        pass
+        
+    return text_content, has_macro
+# ==========================================
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -759,7 +794,6 @@ def update_class(assignment_id):
         flash(f'作业 [{a.title}] 目标班级已修改为: {new_class}', 'success')
     return redirect(url_for('admin'))
 
-# ====== 新增的更新必含词路由 ======
 @app.route('/admin/update_keyword/<int:assignment_id>', methods=['POST'])
 @login_required
 def update_keyword(assignment_id):
@@ -774,7 +808,6 @@ def update_keyword(assignment_id):
         else:
             flash(f'作业 [{a.title}] 的必含词已清除（不再校验）', 'success')
     return redirect(url_for('admin'))
-# ================================
 
 @app.route('/admin/delete_submission/<int:submission_id>')
 @login_required
@@ -851,63 +884,25 @@ def student():
         if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
             
-            if ext == '.docx':
-                try:
-                    # 一次性读取文件内容到内存中
-                    file_bytes = file.read()
-                    file.stream.seek(0) # 重置指针，供后续保存文件使用
-                    
-                    # 使用 io.BytesIO 包装内存数据
-                    with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-                        if 'word/vbaProject.bin' in zf.namelist():
-                            return jsonify({"success": False, "message": "检测到文件包含恶意宏，已被拒绝提交！"}), 400
-                        
-                        if assignment.check_keyword and not force_submit:
-                            if 'word/document.xml' in zf.namelist():
-                                xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
-                                text_content = re.sub(r'<[^>]+>', '', xml_content)
-                                clean_text = re.sub(r'\s+', '', text_content)
-                                
-                                # 柔和版提示词
-                                if assignment.check_keyword not in clean_text:
-                                    return jsonify({
-                                        "success": False, 
-                                        "warning": True, 
-                                        "message": f"系统检测到您的 .docx 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n如果确认无误，请点击“确定”继续提交。"
-                                    }), 400
-
-                except zipfile.BadZipFile:
-                    return jsonify({
-                        "success": False, 
-                        "message": "文件校验失败：这可能不是一个真实的 Word 文档，或者文件设置了【密码加密】导致无法解析。\n\n请取消文档密码，或另存为新的 .docx 文件后重试！"
-                    }), 400
-                except Exception as e:
-                    print(f"DOCX 解析异常: {str(e)}")
-                    return jsonify({
-                        "success": False, 
-                        "message": "文件损坏或格式不正确！请尝试用 Word/WPS 打开后，重新“另存为”上传。"
-                    }), 400
-                finally:
-                    file.stream.seek(0) 
-
-            elif ext == '.doc':
+            if ext in ['.doc', '.docx']:
+                # 只要后缀是 doc 或 docx，一律放入通用提取器进行深度检查
+                file_bytes = file.read()
+                file.stream.seek(0)
+                
+                text_content, has_macro = extract_text_from_word(file_bytes)
+                
+                if has_macro:
+                    return jsonify({"success": False, "message": "安全拦截：检测到文件包含恶意宏，已被拒绝提交！"}), 400
+                
                 if assignment.check_keyword and not force_submit:
-                    try:
-                        content = file.stream.read()
-                        text_content = content.decode('utf-16-le', errors='ignore')
-                        file.stream.seek(0) 
-                        
-                        clean_text = re.sub(r'\s+', '', text_content)
-                        
-                        if assignment.check_keyword not in clean_text:
-                            return jsonify({
-                                "success": False, 
-                                "warning": True, 
-                                "message": f"系统在您的 .doc 文件中没有找到【{assignment.check_keyword}】。\n\n(注：.doc 为老格式，如果确认没传错，请点击“确定”继续提交)"
-                            }), 400
-
-                    except Exception:
-                        file.stream.seek(0)
+                    # 去除所有空白字符，提高匹配成功率
+                    clean_text = re.sub(r'\s+', '', text_content)
+                    if assignment.check_keyword not in clean_text:
+                        return jsonify({
+                            "success": False, 
+                            "warning": True, 
+                            "message": f"系统检测到您的 Word 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n如果确认无误，请点击“确定”继续提交。"
+                        }), 400
 
             safe_title = assignment.title
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
