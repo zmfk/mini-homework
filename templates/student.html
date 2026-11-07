@@ -1,13 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-    html {
-        scroll-behavior: smooth;
-    }
+    html { scroll-behavior: smooth; }
 </style>
 <div class="max-w-4xl mx-auto">
     
-    <!-- 全局文件丢失警告 -->
     {% if lost_files %}
     <div class="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-8 shadow-sm flex items-start">
         <div class="flex-shrink-0 pt-0.5">
@@ -30,7 +27,6 @@
     </div>
     {% endif %}
 
-    <!-- 顶部数据概览 -->
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-6">
         <div class="flex items-center space-x-4">
             <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
@@ -43,25 +39,21 @@
         </div>
         
         <div class="flex items-center space-x-2 w-full md:w-auto">
-            <!-- 待提交按钮 -->
             <a href="#section-pending" class="text-center group cursor-pointer hover:bg-orange-50 px-4 py-2 rounded-xl transition-colors">
                 <p class="text-xs text-gray-500 font-medium mb-1 group-hover:text-orange-500">待提交</p>
                 <p class="text-2xl font-bold {% if pending_count > 0 %}text-orange-500{% else %}text-gray-400{% endif %}">{{ pending_count }}</p>
             </a>
             
-            <!-- 已逾期按钮 -->
             <a href="#section-overdue" class="text-center group cursor-pointer hover:bg-red-50 px-4 py-2 rounded-xl transition-colors">
                 <p class="text-xs text-gray-500 font-medium mb-1 group-hover:text-red-500">已逾期</p>
                 <p class="text-2xl font-bold {% if overdue_count > 0 %}text-red-500{% else %}text-gray-400{% endif %}">{{ overdue_count }}</p>
             </a>
             
-            <!-- 已交按钮 -->
             <a href="#section-submitted" class="text-center group cursor-pointer hover:bg-green-50 px-4 py-2 rounded-xl transition-colors border-l border-gray-100">
                 <p class="text-xs text-gray-500 font-medium mb-1 group-hover:text-green-600">已交</p>
                 <p class="text-2xl font-bold text-green-600">{{ submitted_count }}</p>
             </a>
             
-            <!-- 进度条 -->
             <div class="flex-grow md:w-40 ml-4">
                 <div class="flex justify-between text-xs mb-1">
                     <span class="text-gray-500">完成进度</span>
@@ -74,7 +66,6 @@
         </div>
     </div>
 
-    <!-- 宏：渲染作业卡片 -->
     {% macro render_card(a, sub, is_expired, type='pending') %}
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-shadow hover:shadow-md {% if type == 'submitted' and sub.file_exists %}opacity-80 hover:opacity-100{% endif %}">
         <div class="flex-grow">
@@ -85,7 +76,6 @@
                     {% if sub.file_exists %}
                         <span class="px-2.5 py-1 rounded-md text-xs font-bold bg-green-100 text-green-700 border border-green-200">已提交</span>
                     {% elif sub.is_cleared %}
-                        <!-- 被管理员清理的，依然显示绿色的“已提交” -->
                         <span class="px-2.5 py-1 rounded-md text-xs font-bold bg-green-100 text-green-700 border border-green-200">已提交</span>
                     {% else %}
                         <span class="px-2.5 py-1 rounded-md text-xs font-bold bg-red-100 text-red-700 border border-red-200 animate-pulse">文件异常</span>
@@ -131,7 +121,6 @@
                     </div>
                 {% endif %}
 
-                <!-- 只有当作业未截止，且文件真实存在或真实异常时，才允许撤回重传 -->
                 {% if not is_expired and not sub.is_cleared %}
                 <a href="/student/delete/{{ a.id }}" onclick="return confirm('确定撤回重传吗？原文件将被删除。')" class="text-xs font-bold text-red-600 hover:text-red-800 bg-white px-2 py-1.5 rounded-md border border-red-200 whitespace-nowrap transition-colors shadow-sm">撤回重传</a>
                 {% endif %}
@@ -143,6 +132,7 @@
             {% if type == 'pending' %}
             <form method="POST" enctype="multipart/form-data" class="flex flex-col space-y-3 submit-form">
                 <input type="hidden" name="assignment_id" value="{{ a.id }}">
+                <input type="hidden" name="force_submit" value="">
                 <div class="relative border-2 border-dashed border-orange-300 rounded-xl bg-orange-50 hover:bg-orange-100 transition-colors group cursor-pointer text-center p-4">
                     <input type="file" name="file" accept=".pdf,.doc,.docx" required 
                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
@@ -169,10 +159,8 @@
     </div>
     {% endmacro %}
 
-    <!-- ================= 三个分区 ================= -->
     <div class="space-y-10">
         
-        <!-- 1. 待提交（未截止未交） -->
         <div id="section-pending" class="scroll-mt-24">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
                 <span class="w-2 h-6 bg-orange-500 rounded-full mr-3"></span>
@@ -192,7 +180,6 @@
             {% endif %}
         </div>
 
-        <!-- 2. 已截止未交 -->
         {% if overdue_assignments %}
         <div id="section-overdue" class="scroll-mt-24">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
@@ -207,7 +194,6 @@
         </div>
         {% endif %}
 
-        <!-- 3. 已完成 -->
         {% if submitted_assignments %}
         <div id="section-submitted" class="scroll-mt-24">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
@@ -228,7 +214,6 @@
 </div>
 
 <script>
-    // 页面加载完成后，自动读取 data-width 设置进度条宽度
     document.addEventListener("DOMContentLoaded", function() {
         document.querySelectorAll('.progress-bar').forEach(el => {
             el.style.width = el.getAttribute('data-width');
@@ -255,6 +240,7 @@
             
             const assignmentId = this.querySelector('input[name="assignment_id"]').value;
             const fileInput = this.querySelector('input[type="file"]');
+            const forceInput = this.querySelector('input[name="force_submit"]');
             const btn = this.querySelector('button[type="submit"]');
             
             if (!fileInput.files[0]) {
@@ -274,6 +260,7 @@
             const formData = new FormData();
             formData.append('assignment_id', assignmentId);
             formData.append('file', fileInput.files[0]);
+            formData.append('force_submit', forceInput.value);
 
             try {
                 const response = await fetch('/student', {
@@ -286,7 +273,23 @@
                     if (btn) btn.disabled = false;
                     window.location.reload();
                 } else {
-                    alert("上传失败，请重试");
+                    const errData = await response.json();
+                    
+                    if (errData.warning) {
+                        isUploading = false;
+                        if (confirm(errData.message)) {
+                            forceInput.value = "1";
+                            this.dispatchEvent(new Event('submit')); 
+                        } else {
+                            btn.innerHTML = '立即提交';
+                            btn.disabled = false;
+                            btn.classList.add('hover:bg-orange-600', 'active:scale-[0.98]');
+                            btn.classList.remove('opacity-80', 'cursor-not-allowed');
+                        }
+                        return;
+                    }
+                    
+                    alert(errData.message || "上传失败，请重试");
                     isUploading = false;
                     btn.innerHTML = '立即提交';
                     btn.disabled = false;

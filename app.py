@@ -3,6 +3,7 @@ import io
 import zipfile
 import requests
 import sqlite3
+import re
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -75,6 +76,8 @@ class Assignment(db.Model):
     is_archived = db.Column(db.Boolean, default=False)
     last_download_count = db.Column(db.Integer, default=0)
     class_name = db.Column(db.String(50), default='全部班级')
+    check_keyword = db.Column(db.String(50), nullable=True)
+    exclude_keyword = db.Column(db.String(255), nullable=True) # 保留字段防止数据库报错，但代码不再使用
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -295,7 +298,6 @@ def toggle_maintenance():
 def admin():
     if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
     
-    # 提前获取所有班级，用于发布作业防呆校验
     all_users = User.query.all()
     valid_classes = sorted(list(set([u.class_name for u in all_users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
 
@@ -303,6 +305,7 @@ def admin():
         title = request.form.get('title')
         deadline_str = request.form.get('deadline')
         target_class = request.form.get('target_class', '').strip()
+        check_keyword = request.form.get('check_keyword', '').strip()
         
         if not target_class:
             flash('发布失败：目标班级不能为空！如果要发给所有人，请填“全部班级”。', 'error')
@@ -311,12 +314,10 @@ def admin():
         if title and deadline_str:
             deadline = datetime.strptime(deadline_str, '%Y-%m-%dT%H:%M')
             
-            # ================= 新增防呆 1：拦截过去的时间 =================
             if deadline < get_bj_time():
                 flash('🚨 发布失败：截止时间不能早于当前时间，请重新选择！', 'error')
                 return redirect(url_for('admin'))
                 
-            # ================= 新增防呆 2：拦截不存在的班级 =================
             if target_class != '全部班级' and target_class not in valid_classes:
                 flash(f'⚠️ 发布失败：系统里不存在名为 [{target_class}] 的班级，请检查是否打错字！', 'error')
                 return redirect(url_for('admin'))
@@ -325,6 +326,7 @@ def admin():
                 title=title, 
                 deadline=deadline, 
                 class_name=target_class,
+                check_keyword=check_keyword if check_keyword else None,
                 publish_time=get_bj_time()
             ))
             db.session.commit()
@@ -334,7 +336,7 @@ def admin():
         student_data = request.form.get('student_data')
         lines = student_data.strip().split('\n')
         count = 0
-        invalid_count = 0  # 新增：错误行计数器
+        invalid_count = 0 
         
         for line in lines:
             line_str = line.strip()
@@ -348,11 +350,9 @@ def admin():
                 username = parts[0].strip()
                 name = parts[1].strip()
                 
-                # ================= 新增防呆 3：拦截乱码学号 =================
                 if not username.isdigit():
                     invalid_count += 1
                     continue
-                # ==========================================================
 
                 class_name = parts[2].strip() if len(parts) >= 3 else '默认班级'
                 role = 'student'
@@ -450,7 +450,6 @@ def admin():
     pa_stats = get_pa_stats()
     current_total_subs = Submission.query.count()
     sys_config = SystemConfig.query.first()
-    
     reset_requests = PasswordResetRequest.query.order_by(PasswordResetRequest.request_time.desc()).all()
 
     return render_template('admin.html', 
@@ -734,7 +733,6 @@ def update_deadline(assignment_id):
         try:
             new_time = datetime.strptime(new_time_str, '%Y-%m-%dT%H:%M')
             
-            # ================= 新增防呆：改时间也不能改到过去 =================
             if new_time < get_bj_time():
                 flash('🚨 修改失败：截止时间不能早于当前时间！', 'error')
                 return redirect(url_for('admin'))
@@ -824,15 +822,14 @@ def student():
         assignment_id = request.form.get('assignment_id')
         file = request.files.get('file')
         assignment = Assignment.query.get(assignment_id)
+        force_submit = request.form.get('force_submit')
         
         now_bj = get_bj_time()
         if not assignment or (assignment.class_name != '全部班级' and assignment.class_name != current_user.class_name):
-            flash('越权操作：该作业不属于你的班级！', 'error')
-            return redirect(url_for('student'))
+            return jsonify({"success": False, "message": "越权操作：该作业不属于你的班级！"}), 403
             
         if assignment.is_forced_closed or (now_bj > assignment.deadline and not assignment.is_active):
-            flash('该作业已截止提交！', 'error')
-            return redirect(url_for('student'))
+            return jsonify({"success": False, "message": "该作业已截止提交！"}), 403
 
         if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
@@ -841,13 +838,46 @@ def student():
                 try:
                     with zipfile.ZipFile(file.stream) as zf:
                         if 'word/vbaProject.bin' in zf.namelist():
-                            flash('检测到文件包含恶意宏，已被拒绝提交！', 'error')
-                            return redirect(url_for('student'))
+                            return jsonify({"success": False, "message": "检测到文件包含恶意宏，已被拒绝提交！"}), 400
+                        
+                        if assignment.check_keyword and not force_submit:
+                            if 'word/document.xml' in zf.namelist():
+                                xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
+                                text_content = re.sub(r'<[^>]+>', '', xml_content)
+                                clean_text = re.sub(r'\s+', '', text_content)
+                                
+                                # 检查必含词
+                                if assignment.check_keyword not in clean_text:
+                                    return jsonify({
+                                        "success": False, 
+                                        "warning": True, 
+                                        "message": f"系统检测到您的 .docx 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n确定要强行提交吗？"
+                                    }), 400
+
                 except Exception:
-                    flash('文件损坏或格式不正确！', 'error')
-                    return redirect(url_for('student'))
+                    return jsonify({"success": False, "message": "文件损坏或格式不正确！"}), 400
                 finally:
                     file.stream.seek(0) 
+
+            elif ext == '.doc':
+                if assignment.check_keyword and not force_submit:
+                    try:
+                        content = file.stream.read()
+                        text_content = content.decode('utf-16-le', errors='ignore')
+                        file.stream.seek(0) 
+                        
+                        clean_text = re.sub(r'\s+', '', text_content)
+                        
+                        # 检查必含词
+                        if assignment.check_keyword not in clean_text:
+                            return jsonify({
+                                "success": False, 
+                                "warning": True, 
+                                "message": f"系统在您的 .doc 文件中没有找到【{assignment.check_keyword}】。\n\n(注：.doc 为老格式，如果确认没传错，请点击确定继续提交)"
+                            }), 400
+
+                    except Exception:
+                        file.stream.seek(0)
 
             safe_title = assignment.title
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
@@ -857,8 +887,7 @@ def student():
             try:
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             except Exception as e:
-                flash(f'文件保存失败，请联系老师。错误: {str(e)}', 'error')
-                return redirect(url_for('student'))
+                return jsonify({"success": False, "message": f"文件保存失败: {str(e)}"}), 500
             
             old_sub = Submission.query.filter_by(assignment_id=assignment_id, student_id=current_user.username).first()
             if old_sub:
@@ -868,9 +897,9 @@ def student():
             
             db.session.add(Submission(assignment_id=assignment_id, student_id=current_user.username, student_name=current_user.name, file_name=filename, is_cleared=False))
             db.session.commit()
-            flash('作业提交成功！', 'success')
+            return jsonify({"success": True, "message": "作业提交成功！"})
         else:
-            flash('只支持上传 PDF, DOC, DOCX 格式！', 'error')
+            return jsonify({"success": False, "message": "只支持上传 PDF, DOC, DOCX 格式！"}), 400
             
     assignments = Assignment.query.filter(
         (Assignment.class_name == current_user.class_name) | (Assignment.class_name == '全部班级')
@@ -1069,6 +1098,12 @@ with app.app_context():
         if 'publish_time' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN publish_time DATETIME")
             cursor.execute("UPDATE assignment SET publish_time = CURRENT_TIMESTAMP WHERE publish_time IS NULL")
+            conn.commit()
+        if 'check_keyword' not in assign_columns:
+            cursor.execute("ALTER TABLE assignment ADD COLUMN check_keyword VARCHAR(50)")
+            conn.commit()
+        if 'exclude_keyword' not in assign_columns:
+            cursor.execute("ALTER TABLE assignment ADD COLUMN exclude_keyword VARCHAR(255)")
             conn.commit()
 
         cursor.execute("PRAGMA table_info(submission)")
