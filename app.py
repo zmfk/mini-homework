@@ -92,14 +92,21 @@ class SystemConfig(db.Model):
     start_time = db.Column(db.DateTime, nullable=True)
     end_time = db.Column(db.DateTime, nullable=True)
 
+# 新增：密码重置请求表
+class PasswordResetRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.String(50), nullable=False)
+    student_name = db.Column(db.String(50), nullable=False)
+    request_time = db.Column(db.DateTime, default=get_bj_time)
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
 @app.before_request
 def check_maintenance():
-    # 移除了 change_password，使得维护期间学生无法修改密码
-    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page']
+    # 加入 api_request_reset，使得维护期间也能发重置密码申请
+    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'api_request_reset']
     if request.endpoint in allowed_endpoints:
         return
 
@@ -174,7 +181,35 @@ def login():
             login_user(user)
             return redirect(url_for('index'))
         flash('学号或密码错误', 'error')
-    return render_template('login.html')
+    
+    contact_email = os.environ.get('CONTACT_EMAIL', '')
+    return render_template('login.html', contact_email=contact_email)
+
+# 新增：接收学生的密码重置申请 API
+@app.route('/api/request_reset', methods=['POST'])
+def api_request_reset():
+    data = request.get_json()
+    student_id = data.get('student_id', '').strip()
+    student_name = data.get('student_name', '').strip()
+
+    if not student_id or not student_name:
+        return jsonify({"success": False, "message": "学号和姓名不能为空"})
+
+    user = User.query.filter_by(username=student_id).first()
+    if not user:
+        return jsonify({"success": False, "message": "该学号不存在，请检查输入"})
+    if user.name != student_name:
+        return jsonify({"success": False, "message": "学号与姓名不匹配，请重新输入"})
+
+    # 防刷：检查是否已有未处理的申请
+    existing_req = PasswordResetRequest.query.filter_by(student_id=student_id).first()
+    if existing_req:
+        return jsonify({"success": True, "message": "您已提交过申请，请耐心等待管理员处理"})
+
+    new_req = PasswordResetRequest(student_id=student_id, student_name=student_name)
+    db.session.add(new_req)
+    db.session.commit()
+    return jsonify({"success": True, "message": "申请已发送，请等待管理员为您重置密码"})
 
 @app.route('/logout')
 @login_required
@@ -234,7 +269,6 @@ def toggle_maintenance():
     config = SystemConfig.query.first()
     if config:
         config.message = request.form.get('message', config.message).strip()
-        
         start_str = request.form.get('start_time')
         end_str = request.form.get('end_time')
         
@@ -365,7 +399,6 @@ def admin():
         subs.sort(key=lambda x: (x.class_name, x.student_id))
         not_submitted.sort(key=lambda x: (x.class_name, x.username))
         
-        # 提前计算丢失文件名单，方便前端调用
         lost_names = [sub.student_name for sub in subs if not sub.file_exists and not sub.is_cleared]
         
         report[a.id] = {
@@ -382,6 +415,9 @@ def admin():
     pa_stats = get_pa_stats()
     current_total_subs = Submission.query.count()
     sys_config = SystemConfig.query.first()
+    
+    # 获取未处理的密码重置请求
+    reset_requests = PasswordResetRequest.query.order_by(PasswordResetRequest.request_time.desc()).all()
 
     return render_template('admin.html', 
                            users=users, 
@@ -393,7 +429,39 @@ def admin():
                            current_total_subs=current_total_subs,
                            pa_stats=pa_stats,
                            all_classes=all_classes,
-                           sys_config=sys_config)
+                           sys_config=sys_config,
+                           reset_requests=reset_requests)
+
+# 管理员：同意重置密码
+@app.route('/admin/handle_reset_request/<int:req_id>')
+@login_required
+def handle_reset_request(req_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    req = PasswordResetRequest.query.get(req_id)
+    if req:
+        user = User.query.filter_by(username=req.student_id).first()
+        if user:
+            user.password_hash = generate_password_hash(user.username)
+            db.session.delete(req)
+            db.session.commit()
+            flash(f'已同意 {req.student_name} 的申请，密码已重置为学号', 'success')
+        else:
+            flash('该学号已不存在，可能已被删除', 'error')
+            db.session.delete(req)
+            db.session.commit()
+    return redirect(url_for('admin'))
+
+# 管理员：忽略请求
+@app.route('/admin/dismiss_reset_request/<int:req_id>')
+@login_required
+def dismiss_reset_request(req_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    req = PasswordResetRequest.query.get(req_id)
+    if req:
+        db.session.delete(req)
+        db.session.commit()
+        flash(f'已忽略 {req.student_name} 的密码重置申请', 'success')
+    return redirect(url_for('admin'))
 
 @app.route('/admin/export_summary')
 @login_required

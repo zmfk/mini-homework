@@ -1,17 +1,95 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-md mx-auto mt-20 bg-white p-8 border border-gray-200 shadow-sm rounded-none">
-    <h2 class="text-2xl font-semibold mb-6 text-center">系统登录</h2>
+<div class="max-w-md mx-auto mt-20 bg-white p-8 border border-gray-200 shadow-sm rounded-2xl">
+    <h2 class="text-2xl font-semibold mb-6 text-center text-gray-900">系统登录</h2>
     <form method="POST" action="/login" class="space-y-4">
         <div>
             <label class="block text-sm text-gray-600 mb-1">学号 / 工号</label>
-            <input type="text" name="username" required class="w-full border border-gray-300 p-2 focus:outline-none focus:border-black">
+            <input type="text" name="username" required class="w-full border border-gray-300 p-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
         </div>
         <div>
             <label class="block text-sm text-gray-600 mb-1">密码</label>
-            <input type="password" name="password" required class="w-full border border-gray-300 p-2 focus:outline-none focus:border-black">
+            <input type="password" name="password" required class="w-full border border-gray-300 p-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
         </div>
-        <button type="submit" class="w-full bg-black text-white p-3 mt-4 hover:bg-gray-800 transition">登 录</button>
+        <button type="submit" class="w-full bg-black text-white p-3 rounded-lg mt-2 hover:bg-gray-800 transition shadow-sm font-medium">登 录</button>
     </form>
+
+    <!-- 优化后的忘记密码区域 -->
+    <div class="mt-8 pt-6 border-t border-gray-100 text-center">
+        <p class="text-sm font-bold text-gray-800 mb-3">忘记密码？</p>
+        
+        <!-- 主推：在线申请 -->
+        <button type="button" onclick="toggleResetForm()" class="w-full bg-blue-50 text-blue-600 font-bold py-2.5 rounded-xl border border-blue-200 hover:bg-blue-100 transition-colors mb-3 flex items-center justify-center">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+            在线提交密码重置申请
+        </button>
+
+        <!-- 备用：邮箱/联系老师 -->
+        <p class="text-xs text-gray-400">
+            {% if contact_email %}
+                若系统无法访问，请联系任课老师或发邮件至 <a href="mailto:{{ contact_email }}" class="text-blue-500 hover:underline">{{ contact_email }}</a>
+            {% else %}
+                若系统无法访问，请联系任课老师或系统管理员
+            {% endif %}
+        </p>
+
+        <!-- 折叠的重置密码申请表单 -->
+        <div id="resetFormContainer" class="hidden mt-4 text-left bg-gray-50 p-4 rounded-xl border border-gray-200">
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">学号</label>
+                    <input type="text" id="reset-student-id" placeholder="请输入学号" class="w-full border border-gray-300 p-2 rounded-lg focus:outline-none focus:border-blue-500 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">姓名</label>
+                    <input type="text" id="reset-student-name" placeholder="请输入姓名" class="w-full border border-gray-300 p-2 rounded-lg focus:outline-none focus:border-blue-500 text-sm">
+                </div>
+                <button type="button" onclick="submitResetRequest()" class="w-full bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm shadow-md shadow-blue-500/20">
+                    发送重置申请
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
+
+<script>
+    function toggleResetForm() {
+        const container = document.getElementById('resetFormContainer');
+        if (container.classList.contains('hidden')) {
+            container.classList.remove('hidden');
+        } else {
+            container.classList.add('hidden');
+        }
+    }
+
+    function submitResetRequest() {
+        const studentId = document.getElementById('reset-student-id').value.trim();
+        const studentName = document.getElementById('reset-student-name').value.trim();
+
+        if (!studentId || !studentName) {
+            alert("请填写完整的学号和姓名！");
+            return;
+        }
+
+        fetch('/api/request_reset', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ student_id: studentId, student_name: studentName })
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert(data.message);
+            if (data.success) {
+                document.getElementById('reset-student-id').value = '';
+                document.getElementById('reset-student-name').value = '';
+                toggleResetForm();
+            }
+        })
+        .catch(err => {
+            alert("网络错误，请稍后再试！");
+        });
+    }
+</script>
 {% endblock %}
