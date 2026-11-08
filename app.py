@@ -114,6 +114,7 @@ class Assignment(db.Model):
     class_name = db.Column(db.String(50), default='全部班级')
     check_keyword = db.Column(db.String(50), nullable=True)
     materials = db.Column(db.Text, nullable=True) 
+    reminder_sent = db.Column(db.Boolean, default=False) # 新增：用于邮件提醒标记
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -174,16 +175,10 @@ def check_maintenance():
                 return redirect(url_for('maintenance_page'))
 
             if request.endpoint in ['api_send_email_code', 'api_verify_email_code']:
-                return jsonify({
-                    "success": False,
-                    "message": "系统维护中，暂时无法重置密码，请稍后再试。"
-                }), 503
+                return jsonify({"success": False, "message": "系统维护中，暂时无法重置密码，请稍后再试。"}), 503
 
             if request.method == 'POST' or request.path.startswith('/api/'):
-                return jsonify({
-                    "error": "maintenance",
-                    "message": config.message
-                }), 503
+                return jsonify({"error": "maintenance", "message": config.message}), 503
 
             return redirect(url_for('maintenance_page'))
     except Exception:
@@ -414,7 +409,6 @@ def toggle_maintenance():
         flash(f'系统维护模式已{status}！', 'success')
     return redirect(url_for('admin'))
 
-# ====== 新增：补传材料的专用路由 ======
 @app.route('/admin/upload_materials/<int:assignment_id>', methods=['POST'])
 @login_required
 def upload_materials(assignment_id):
@@ -443,7 +437,6 @@ def upload_materials(assignment_id):
     flash('材料补传成功！', 'success')
     return redirect(request.referrer or url_for('admin'))
 
-# ====== 新增：删除指定材料的专用路由 ======
 @app.route('/admin/delete_material/<int:assignment_id>/<path:filename>')
 @login_required
 def delete_material(assignment_id, filename):
@@ -663,16 +656,12 @@ def export_summary():
     
     users = User.query.order_by(User.class_name.asc(), User.username.asc()).all()
     assignments = Assignment.query.order_by(Assignment.id.asc()).all()
-    
     all_classes = sorted(list(set([u.class_name for u in users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
     
     style_submitted = {'font': Font(color="000000")} 
     style_late = {'font': Font(color="000000")} 
     style_pending = {'font': Font(color="ED7D31", bold=True)} 
-    style_overdue = {
-        'fill': PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"), 
-        'font': Font(color="9C0006", bold=True) 
-    }
+    style_overdue = {'fill': PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"), 'font': Font(color="9C0006", bold=True)}
     
     now_bj = get_bj_time()
 
@@ -680,18 +669,14 @@ def export_summary():
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for cls in all_classes:
             students = [u for u in users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name == cls]
-            if not students:
-                continue
-                
+            if not students: continue
             cls_assignments = [a for a in assignments if a.class_name == cls or a.class_name == '全部班级']
             
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = f"{cls}班总表"
-            
             header = ['学号', '姓名'] + [a.title for a in cls_assignments]
             ws.append(header)
-            
             header_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
             for cell in ws[1]:
                 cell.font = Font(bold=True)
@@ -701,10 +686,8 @@ def export_summary():
             for stu in students:
                 row = [str(stu.username), stu.name]
                 col_styles = [] 
-                
                 for a in cls_assignments:
                     is_overdue = now_bj > a.deadline
-                    
                     sub = Submission.query.filter_by(assignment_id=a.id, student_id=stu.username).first()
                     if sub:
                         sub_time_bj = sub.submit_time + timedelta(hours=8)
@@ -716,22 +699,16 @@ def export_summary():
                             col_styles.append(style_submitted)
                     else:
                         row.append('未交')
-                        if is_overdue:
-                            col_styles.append(style_overdue) 
-                        else:
-                            col_styles.append(style_pending) 
-                            
+                        if is_overdue: col_styles.append(style_overdue) 
+                        else: col_styles.append(style_pending) 
                 ws.append(row)
-                
                 current_row = ws.max_row
                 for idx, style_dict in enumerate(col_styles):
                     cell = ws.cell(row=current_row, column=idx + 3)
                     cell.alignment = Alignment(horizontal='center', vertical='center')
-                    if 'fill' in style_dict:
-                        cell.fill = style_dict['fill']
-                    if 'font' in style_dict:
-                        cell.font = style_dict['font']
-                
+                    if 'fill' in style_dict: cell.fill = style_dict['fill']
+                    if 'font' in style_dict: cell.font = style_dict['font']
+            
             for col_idx, column_cells in enumerate(ws.columns, 1):
                 max_length = 0
                 column_letter = get_column_letter(col_idx)
@@ -739,25 +716,17 @@ def export_summary():
                     try:
                         if cell.value:
                             length = sum(2 if ord(c) > 127 else 1 for c in str(cell.value))
-                            if length > max_length:
-                                max_length = length
-                    except:
-                        pass
+                            if length > max_length: max_length = length
+                    except: pass
                 ws.column_dimensions[column_letter].width = max_length + 4
                 
             excel_stream = io.BytesIO()
             wb.save(excel_stream)
             excel_stream.seek(0)
-            
             zf.writestr(f"{cls}_作业总表.xlsx", excel_stream.getvalue())
             
     memory_file.seek(0)
-    return send_file(
-        memory_file, 
-        mimetype='application/zip', 
-        as_attachment=True, 
-        download_name=f"分班作业总表_{get_bj_time().strftime('%Y%m%d')}.zip"
-    )
+    return send_file(memory_file, mimetype='application/zip', as_attachment=True, download_name=f"分班作业总表_{get_bj_time().strftime('%Y%m%d')}.zip")
 
 @app.route('/admin/toggle_archive/<int:assignment_id>')
 @login_required
@@ -908,6 +877,7 @@ def update_deadline(assignment_id):
 
             a.deadline = new_time
             a.is_forced_closed = False 
+            a.reminder_sent = False # 如果修改了截止时间，重置发送状态
             db.session.commit()
             flash(f'作业 [{a.title}] 截止时间已更新', 'success')
         except Exception:
@@ -1318,6 +1288,8 @@ with app.app_context():
             cursor.execute("ALTER TABLE assignment ADD COLUMN check_keyword VARCHAR(50)")
         if 'materials' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN materials TEXT")
+        if 'reminder_sent' not in assign_columns:
+            cursor.execute("ALTER TABLE assignment ADD COLUMN reminder_sent BOOLEAN DEFAULT 0")
         conn.commit()
 
         cursor.execute("PRAGMA table_info(submission)")
