@@ -414,6 +414,35 @@ def toggle_maintenance():
         flash(f'系统维护模式已{status}！', 'success')
     return redirect(url_for('admin'))
 
+# ====== 新增：补传材料的专用路由 ======
+@app.route('/admin/upload_materials/<int:assignment_id>', methods=['POST'])
+@login_required
+def upload_materials(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    if not a: return "作业不存在", 404
+    
+    material_files = request.files.getlist('material_files')
+    saved_materials = a.materials.split(',') if a.materials else []
+    
+    for mat in material_files:
+        if mat and mat.filename != '':
+            ext_m = os.path.splitext(mat.filename)[1].lower()
+            safe_m_name = f"mat_{a.id}_{mat.filename}"
+            for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
+                safe_m_name = safe_m_name.replace(char, '')
+            
+            mat.save(os.path.join(app.config['UPLOAD_FOLDER'], safe_m_name))
+            if safe_m_name not in saved_materials:
+                saved_materials.append(safe_m_name)
+                
+    if saved_materials:
+        a.materials = ",".join(saved_materials)
+        db.session.commit()
+    
+    flash('材料补传成功！', 'success')
+    return redirect(request.referrer or url_for('admin'))
+
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -912,7 +941,7 @@ def delete_submission(submission_id):
 def teacher():
     if current_user.role != 'teacher': return "无权限访问", 403
     
-    # 处理老师发布作业的请求
+    # ====== 新增：处理老师发布作业的 POST 请求 ======
     all_users = User.query.all()
     valid_classes = sorted(list(set([u.class_name for u in all_users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
 
@@ -967,7 +996,7 @@ def teacher():
             flash('作业创建成功！', 'success')
             return redirect(url_for('teacher'))
 
-    # 渲染数据
+    # ====== 渲染数据 ======
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
     

@@ -69,6 +69,9 @@
                         <h3 class="text-lg font-bold text-gray-900 flex flex-wrap items-center gap-2">
                             {{ a.title }}
                             <span class="px-1.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded">{{ a.class_name }}</span>
+                            {% if a.materials %}
+                            <span class="px-1.5 py-0.5 text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-200 rounded">已传材料</span>
+                            {% endif %}
                             
                             {% if a.is_active %}
                                 <span class="px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded border border-green-200 whitespace-nowrap">强制开放中</span>
@@ -103,6 +106,8 @@
                             {% else %}
                                 <a href="/admin/force_close/{{ a.id }}" onclick="return confirm('确定强制截止该作业吗？')" class="text-red-500 hover:underline border-r border-gray-200 pr-3">强制截止</a>
                             {% endif %}
+
+                            <a href="javascript:void(0)" data-id="{{ a.id }}" onclick="uploadMaterial(this)" class="text-emerald-600 hover:underline border-r border-gray-200 pr-3">补传材料</a>
                             
                             <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空文件吗？(保留名单)')" class="text-purple-600 hover:underline border-r border-gray-200 pr-3">清空文件</a>
                             <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('确定彻底删除作业吗？')" class="text-red-500 hover:underline">删除作业</a>
@@ -176,8 +181,41 @@
 </div>
 
 <script>
+    function uploadMaterial(btn) {
+        const assignmentId = btn.dataset.id;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.onchange = function() {
+            if (input.files.length > 0) {
+                const formData = new FormData();
+                for (let i = 0; i < input.files.length; i++) {
+                    formData.append('material_files', input.files[i]);
+                }
+                btn.textContent = "上传中...";
+                btn.style.pointerEvents = "none";
+                fetch(`/admin/upload_materials/${assignmentId}`, {
+                    method: 'POST',
+                    body: formData
+                }).then(res => {
+                    if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        alert('上传失败');
+                        btn.textContent = "补传材料";
+                        btn.style.pointerEvents = "auto";
+                    }
+                }).catch(() => {
+                    alert('网络错误');
+                    btn.textContent = "补传材料";
+                    btn.style.pointerEvents = "auto";
+                });
+            }
+        };
+        input.click();
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
-        // 设置截止时间输入的最小值为当前时间
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         const minTimeStr = now.toISOString().slice(0, 16);
