@@ -1,178 +1,200 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-6xl mx-auto">
-    <div class="flex items-center justify-between mb-8">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-900">老师面板 - 批改中心</h2>
-            <p class="text-sm text-gray-500 mt-1">在此查看学生提交情况并统一下载文件</p>
-        </div>
-        <div class="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
-            <span class="text-sm text-gray-600">共布置了 <strong class="text-blue-600 font-bold">{{ assignments|length }}</strong> 次作业</span>
-        </div>
-    </div>
-
-    <div class="space-y-6">
-        {% for a in assignments %}
-        <div id="assignment-card-{{ a.id }}" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-shadow hover:shadow-md">
-            <div class="p-4 sm:p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-gray-50/30">
+<div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
+    
+    <!-- 左侧：发布新作业 -->
+    <div class="lg:col-span-1 space-y-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 sticky top-24">
+            <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                发布新作业
+            </h3>
+            <form method="POST" enctype="multipart/form-data" class="space-y-3">
+                <input type="hidden" name="create_assignment" value="1">
                 <div>
-                    <h3 class="text-lg font-bold text-gray-900 flex flex-wrap items-center gap-2">
-                        {{ a.title }}
-                        <span class="px-1.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded">{{ a.class_name }}</span>
-                        {% if (a.is_forced_closed or now > a.deadline) and report[a.id].submitted|length > a.last_download_count %}
-                            <span class="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded">⚠️ 有新文件未备份</span>
-                        {% endif %}
-                    </h3>
-                    <p class="text-sm text-gray-500 mt-1 flex flex-wrap items-center">
-                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        截止时间：{{ a.deadline.strftime('%Y-%m-%d %H:%M') }} 
-                        {% if a.is_active %}
-                            <span class="ml-0 sm:ml-3 mt-1 sm:mt-0 px-2 py-0.5 text-xs font-bold bg-green-100 text-green-700 rounded-full border border-green-200">强制开放</span>
-                        {% elif a.is_forced_closed %}
-                            <span class="ml-0 sm:ml-3 mt-1 sm:mt-0 px-2 py-0.5 text-xs font-bold bg-red-100 text-red-700 rounded-full border border-red-200">强制截止</span>
-                        {% endif %}
-                    </p>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">作业名称</label>
+                    <input type="text" name="title" placeholder="例如：JavaWeb-实验一" required 
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
                 </div>
-                <a href="/download_zip/{{ a.id }}" class="bg-gray-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-black transition-colors flex justify-center items-center shadow-md shadow-gray-900/10 w-full sm:w-auto">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    打包下载作业与名单
-                </a>
-            </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">目标班级（必填）</label>
+                    <input type="text" name="target_class" list="class-list" placeholder="例如：软件2531 或 全部班级" required
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                    <datalist id="class-list">
+                        <option value="全部班级">
+                        {% for cls in all_classes %}
+                        <option value="{{ cls }}">
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">防伪校验词（必含词）</label>
+                    <input type="text" name="check_keyword" placeholder="如：ARP协议实验 (仅支持 doc/docx)" 
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none bg-yellow-50 focus:bg-white border-yellow-200">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">截止时间</label>
+                    <input type="datetime-local" name="deadline" id="deadline-input" required 
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">上传材料 (Word/PPT/PDF，可多选)</label>
+                    <input type="file" name="material_files" multiple
+                           class="w-full px-2 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700 transition-all shadow-sm">
+                    立即发布
+                </button>
+            </form>
+        </div>
+    </div>
 
-            {% if a.class_name == '全部班级' and all_classes|length > 0 %}
-            <div class="bg-white px-4 py-3 sm:px-6 flex flex-wrap gap-2 items-center border-b border-gray-100">
-                <span class="text-xs font-bold text-gray-500 mr-1">班级筛选:</span>
-                <button class="filter-btn text-xs px-2.5 py-1 rounded-md bg-indigo-600 text-white shadow-sm transition-colors" data-target-class="all" data-card-id="{{ a.id }}">全部</button>
-                {% for cls in all_classes %}
-                <button class="filter-btn text-xs px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors" data-target-class="{{ cls }}" data-card-id="{{ a.id }}">{{ cls }}</button>
-                {% endfor %}
+    <!-- 右侧：作业看板 -->
+    <div class="lg:col-span-3">
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">老师面板 - 批改中心</h2>
+                <p class="text-sm text-gray-500 mt-1">在此查看学生提交情况、统一下载文件并管理作业</p>
             </div>
-            {% endif %}
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 text-sm">
-                <div class="p-4 sm:p-6 md:border-r border-gray-100 border-b md:border-b-0">
-                    <strong class="text-green-700 block mb-4 flex items-center text-base">
-                        <span id="submitted-title-{{ a.id }}">已交学生 ({{ report[a.id].submitted|length }}人)</span>
-                    </strong>
-                    <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                        {% for sub in report[a.id].submitted %}
-                        <li class="student-item flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100 group" data-class="{{ sub.class_name }}" data-type="submitted">
-                            <div class="flex items-center pr-2 min-w-0">
-                                <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-2 flex-shrink-0">{{ sub.student_name[0] }}</div>
-                                <span class="font-medium text-gray-800 text-xs break-all">{{ sub.student_id }} - {{ sub.student_name }}</span>
-                                {% if sub.is_late %}
-                                    <span class="ml-1.5 px-1 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-600 border border-orange-200 rounded">补交</span>
-                                {% endif %}
-                            </div>
-                            <div class="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
-                                {% if sub.file_exists %}
-                                    <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-[11px] sm:text-xs font-medium bg-white px-1.5 sm:px-2 py-1 rounded border border-gray-200">下载</a>
-                                {% else %}
-                                    {% if sub.is_cleared %}
-                                        <span title="管理员已主动清理了物理文件" class="text-gray-400 text-[11px] sm:text-xs italic bg-white px-1.5 sm:px-2 py-1 rounded border border-gray-200 cursor-not-allowed">管理员已清理</span>
-                                    {% else %}
-                                        <span title="异常：服务器文件丢失" class="text-red-500 text-[11px] sm:text-xs font-bold bg-red-50 px-1.5 sm:px-2 py-1 rounded border border-red-200 cursor-not-allowed">异常丢失</span>
+            <div class="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
+                <span class="text-sm text-gray-600">共布置了 <strong class="text-blue-600 font-bold">{{ assignments|length }}</strong> 次作业</span>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            {% for a in assignments %}
+            <div id="assignment-card-{{ a.id }}" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-shadow hover:shadow-md">
+                <div class="p-4 sm:p-6 border-b border-gray-100 flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 bg-gray-50/30">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900 flex flex-wrap items-center gap-2">
+                            {{ a.title }}
+                            <span class="px-1.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded">{{ a.class_name }}</span>
+                            
+                            {% if a.is_active %}
+                                <span class="px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded border border-green-200 whitespace-nowrap">强制开放中</span>
+                            {% elif a.is_forced_closed %}
+                                <span class="px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 rounded border border-red-200 whitespace-nowrap">强制截止</span>
+                            {% elif now > a.deadline %}
+                                <span class="px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 rounded border border-red-200 whitespace-nowrap">已截止</span>
+                            {% else %}
+                                <span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-700 rounded border border-blue-200 whitespace-nowrap">进行中</span>
+                            {% endif %}
+                            
+                            {% if (a.is_forced_closed or now > a.deadline) and report[a.id].submitted|length > a.last_download_count %}
+                                <span class="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded">⚠️ 有新文件未备份</span>
+                            {% endif %}
+                        </h3>
+                        <p class="text-sm text-gray-500 mt-2 flex flex-wrap items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            截止时间：{{ a.deadline.strftime('%Y-%m-%d %H:%M') }} 
+                        </p>
+                        
+                        <!-- 老师可用的操作按钮 -->
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-medium mt-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm w-fit">
+                            <form method="POST" action="/admin/update_deadline/{{ a.id }}" class="inline-flex items-center space-x-1 border-r border-gray-200 pr-3">
+                                <input type="datetime-local" name="new_deadline" required 
+                                       value="{{ a.deadline.strftime('%Y-%m-%dT%H:%M') }}"
+                                       class="text-[11px] bg-transparent border-none outline-none p-0 cursor-pointer text-gray-600 min-deadline-input w-32">
+                                <button type="submit" class="text-orange-500 hover:text-orange-700 whitespace-nowrap">改时间</button>
+                            </form>
+                            
+                            {% if a.is_forced_closed %}
+                                <a href="/admin/cancel_force_close/{{ a.id }}" onclick="return confirm('确定解除强制截止吗？')" class="text-green-600 hover:underline border-r border-gray-200 pr-3">解除截止</a>
+                            {% else %}
+                                <a href="/admin/force_close/{{ a.id }}" onclick="return confirm('确定强制截止该作业吗？')" class="text-red-500 hover:underline border-r border-gray-200 pr-3">强制截止</a>
+                            {% endif %}
+                            
+                            <a href="/admin/clear_files/{{ a.id }}" onclick="return confirm('确定清空文件吗？(保留名单)')" class="text-purple-600 hover:underline border-r border-gray-200 pr-3">清空文件</a>
+                            <a href="/admin/delete_assignment/{{ a.id }}" onclick="return confirm('确定彻底删除作业吗？')" class="text-red-500 hover:underline">删除作业</a>
+                        </div>
+                    </div>
+                    
+                    <a href="/download_zip/{{ a.id }}" class="bg-gray-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-black transition-colors flex justify-center items-center shadow-md shadow-gray-900/10 w-full lg:w-auto mt-2 lg:mt-0">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        打包下载作业与名单
+                    </a>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 text-sm">
+                    <div class="p-4 sm:p-6 md:border-r border-gray-100 border-b md:border-b-0">
+                        <strong class="text-green-700 block mb-4 flex items-center text-base">
+                            <span>已交学生 ({{ report[a.id].submitted|length }}人)</span>
+                        </strong>
+                        <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                            {% for sub in report[a.id].submitted %}
+                            <li class="flex justify-between items-center bg-green-50/50 p-2.5 rounded-lg border border-green-100 group">
+                                <div class="flex items-center pr-2 min-w-0">
+                                    <div class="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold mr-2 flex-shrink-0">{{ sub.student_name[0] }}</div>
+                                    <span class="font-medium text-gray-800 text-xs break-all">{{ sub.student_id }} - {{ sub.student_name }}</span>
+                                    {% if sub.is_late %}
+                                        <span class="ml-1.5 px-1 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-600 border border-orange-200 rounded">补交</span>
                                     {% endif %}
-                                {% endif %}
-                                <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？')" class="text-red-500 hover:text-red-700 bg-white px-1.5 sm:px-2 py-1 rounded border border-red-200 text-[11px] sm:text-xs font-medium">删除</a>
-                            </div>
-                        </li>
-                        {% else %}
-                        <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                
-                <div class="p-4 sm:p-6 bg-gray-50/30">
-                    <strong class="text-red-600 block mb-4 flex items-center text-base">
-                        <span id="not_submitted-title-{{ a.id }}">未交学生 ({{ report[a.id].not_submitted|length }}人)</span>
-                    </strong>
-                    <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                        {% for stu in report[a.id].not_submitted %}
-                        <li class="student-item flex items-center bg-white p-2.5 rounded-lg border border-red-100" data-class="{{ stu.class_name }}" data-type="not_submitted">
-                            <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2 flex-shrink-0">{{ stu.name[0] }}</div>
-                            <span class="text-gray-700 text-xs break-all">{{ stu.username }} - {{ stu.name }}</span>
-                        </li>
-                        {% else %}
-                        <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
-                        {% endfor %}
-                    </ul>
+                                </div>
+                                <div class="flex items-center space-x-1.5 flex-shrink-0">
+                                    {% if sub.file_exists %}
+                                        <a href="/download/{{ sub.file_name }}" class="text-blue-600 hover:text-blue-800 hover:underline text-[11px] sm:text-xs font-medium bg-white px-1.5 sm:px-2 py-1 rounded border border-gray-200">下载</a>
+                                    {% else %}
+                                        {% if sub.is_cleared %}
+                                            <span title="管理员已主动清理了物理文件" class="text-gray-400 text-[11px] italic bg-white px-1.5 py-1 rounded border border-gray-200 cursor-not-allowed">已清理</span>
+                                        {% else %}
+                                            <span title="异常：服务器文件丢失" class="text-red-500 text-[11px] font-bold bg-red-50 px-1.5 py-1 rounded border border-red-200 cursor-not-allowed">异常丢失</span>
+                                        {% endif %}
+                                    {% endif %}
+                                    <a href="/admin/delete_submission/{{ sub.id }}" onclick="return confirm('确定删除 {{ sub.student_name }} 的提交吗？')" class="text-red-500 hover:text-red-700 bg-white px-1.5 sm:px-2 py-1 rounded border border-red-200 text-[11px] sm:text-xs font-medium">删除</a>
+                                </div>
+                            </li>
+                            {% else %}
+                            <li class="text-gray-400 italic text-center py-4">暂无学生提交</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    
+                    <div class="p-4 sm:p-6 bg-gray-50/30">
+                        <strong class="text-red-600 block mb-4 flex items-center text-base">
+                            <span>未交学生 ({{ report[a.id].not_submitted|length }}人)</span>
+                        </strong>
+                        <ul class="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                            {% for stu in report[a.id].not_submitted %}
+                            <li class="flex items-center bg-white p-2.5 rounded-lg border border-red-100">
+                                <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-2 flex-shrink-0">{{ stu.name[0] }}</div>
+                                <span class="text-gray-700 text-xs break-all">{{ stu.username }} - {{ stu.name }}</span>
+                            </li>
+                            {% else %}
+                            <li class="text-green-600 font-medium text-center py-4 bg-green-50 rounded-lg border border-green-100">全员已交</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 </div>
             </div>
+            {% else %}
+            <div class="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-300">
+                <p class="text-gray-500">暂无布置的作业，请在左侧发布</p>
+            </div>
+            {% endfor %}
         </div>
-        {% else %}
-        <div class="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-300">
-            <p class="text-gray-500">暂无布置的作业</p>
-        </div>
-        {% endfor %}
     </div>
-</div>
-
-<div id="data-container" data-total-subs="{{ current_total_subs }}" class="hidden"></div>
-
-<div id="refresh-toast" class="fixed bottom-8 right-8 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
-    <div class="flex items-center">
-        <span class="relative flex h-3 w-3 mr-3">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-        </span>
-        <span class="font-medium text-sm">有学生刚刚提交了作业！</span>
-    </div>
-    <button onclick="window.location.reload()" class="bg-white text-gray-900 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">立即刷新</button>
 </div>
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        const dataContainer = document.getElementById('data-container');
-        let currentTotalSubs = parseInt(dataContainer.getAttribute('data-total-subs')) || 0;
-        
-        setInterval(function() {
-            fetch('/api/submission_count')
-                .then(res => res.ok ? res.json() : Promise.reject())
-                .then(data => {
-                    if (data.total > currentTotalSubs) {
-                        document.getElementById('refresh-toast').classList.remove('translate-y-20', 'opacity-0');
-                        currentTotalSubs = data.total; 
-                    }
-                })
-                .catch(() => console.log("检查更新失败"));
-        }, 60000); 
+        // 设置截止时间输入的最小值为当前时间
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        const minTimeStr = now.toISOString().slice(0, 16);
 
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const cardId = this.dataset.cardId;
-                const targetClass = this.dataset.targetClass;
-                const btnGroup = this.parentElement.querySelectorAll('.filter-btn');
-                
-                btnGroup.forEach(b => {
-                    b.classList.remove('bg-indigo-600', 'text-white', 'shadow-sm');
-                    b.classList.add('bg-gray-50', 'border', 'border-gray-200', 'text-gray-600', 'hover:bg-gray-100');
-                });
-                this.classList.remove('bg-gray-50', 'border', 'border-gray-200', 'text-gray-600', 'hover:bg-gray-100');
-                this.classList.add('bg-indigo-600', 'text-white', 'shadow-sm');
+        const deadlineInput = document.getElementById("deadline-input");
+        if (deadlineInput) {
+            deadlineInput.min = minTimeStr;
+            if (!deadlineInput.value) {
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                deadlineInput.value = `${year}-${month}-${day}T23:59`;
+            }
+        }
 
-                const card = document.getElementById(`assignment-card-${cardId}`);
-                const items = card.querySelectorAll('.student-item');
-                
-                let submittedCount = 0;
-                let notSubmittedCount = 0;
-                
-                items.forEach(item => {
-                    const isSubmitted = item.dataset.type === 'submitted';
-                    if (targetClass === 'all' || item.dataset.class === targetClass) {
-                        item.style.display = 'flex';
-                        if (isSubmitted) submittedCount++;
-                        else notSubmittedCount++;
-                    } else {
-                        item.style.display = 'none';
-                    }
-                });
-                
-                const submitTitle = card.querySelector(`#submitted-title-${cardId}`);
-                const notSubmitTitle = card.querySelector(`#not_submitted-title-${cardId}`);
-                if (submitTitle) submitTitle.textContent = `已交学生 (${submittedCount}人)`;
-                if (notSubmitTitle) notSubmitTitle.textContent = `未交学生 (${notSubmittedCount}人)`;
-            });
+        document.querySelectorAll('.min-deadline-input').forEach(input => {
+            input.min = minTimeStr;
         });
     });
 </script>

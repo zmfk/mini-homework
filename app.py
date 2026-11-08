@@ -64,13 +64,11 @@ def get_folder_size(folder_path):
 
 # ==========================================
 # 核心增强：通用的 Word 文本提取器
-# 无论真 docx、假 docx、老 doc，都会尽全力挖出文本
 # ==========================================
 def extract_text_from_word(file_bytes):
     text_content = ""
     has_macro = False
     
-    # 尝试1：当做 docx (ZIP) 解析
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
             if 'word/vbaProject.bin' in zf.namelist():
@@ -78,18 +76,15 @@ def extract_text_from_word(file_bytes):
             
             if 'word/document.xml' in zf.namelist():
                 xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
-                # 将各种标签替换为空格，防止单词粘连
                 text_content = re.sub(r'<[^>]+>', ' ', xml_content)
                 return text_content, has_macro
     except Exception:
-        pass # 不是 zip 格式，说明大概率是老版 doc，或者文件损坏
+        pass 
         
-    # 尝试2：当做 doc (二进制流) 暴力提取
     try:
         text_utf16 = file_bytes.decode('utf-16-le', errors='ignore')
         text_utf8 = file_bytes.decode('utf-8', errors='ignore')
         text_gbk = file_bytes.decode('gbk', errors='ignore')
-        # 三种方式暴力解码后拼接，宁可多抓不能漏抓
         text_content = text_utf16 + " " + text_utf8 + " " + text_gbk
     except Exception:
         pass
@@ -118,6 +113,7 @@ class Assignment(db.Model):
     last_download_count = db.Column(db.Integer, default=0)
     class_name = db.Column(db.String(50), default='全部班级')
     check_keyword = db.Column(db.String(50), nullable=True)
+    materials = db.Column(db.Text, nullable=True) 
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -163,40 +159,32 @@ def inject_sys_config():
 
 @app.before_request
 def check_maintenance():
-    # 维护期间仅允许：静态资源、登录页、退出、维护页
-    # 注意：不再放行 change_password、api_send_email_code、api_verify_email_code
     allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page']
     if request.endpoint in allowed_endpoints:
         return
 
-    # 管理员和教师不受维护限制
     if current_user.is_authenticated and current_user.role in ['admin', 'teacher']:
         return
 
     try:
         config = SystemConfig.query.first()
         if config and config.is_maintenance:
-            # 1. 维护期间禁止修改密码：友好重定向
             if request.endpoint == 'change_password':
                 flash('系统维护中，暂时无法修改密码。', 'error')
                 return redirect(url_for('maintenance_page'))
 
-            # 2. 维护期间禁止通过邮箱验证码重置密码
-            #    这两个接口是 JSON 接口，返回 JSON 让前端提示
             if request.endpoint in ['api_send_email_code', 'api_verify_email_code']:
                 return jsonify({
                     "success": False,
                     "message": "系统维护中，暂时无法重置密码，请稍后再试。"
                 }), 503
 
-            # 3. 其他 POST 或 API 请求统一拦截
             if request.method == 'POST' or request.path.startswith('/api/'):
                 return jsonify({
                     "error": "maintenance",
                     "message": config.message
                 }), 503
 
-            # 4. 普通 GET 页面跳转到维护页
             return redirect(url_for('maintenance_page'))
     except Exception:
         pass 
@@ -455,14 +443,33 @@ def admin():
                 flash(f'⚠️ 发布失败：系统里不存在名为 [{target_class}] 的班级，请检查是否打错字！', 'error')
                 return redirect(url_for('admin'))
 
-            db.session.add(Assignment(
+            new_assignment = Assignment(
                 title=title, 
                 deadline=deadline, 
                 class_name=target_class,
                 check_keyword=check_keyword if check_keyword else None,
                 publish_time=get_bj_time()
-            ))
+            )
+            db.session.add(new_assignment)
             db.session.commit()
+
+            material_files = request.files.getlist('material_files')
+            saved_materials = []
+            
+            for mat in material_files:
+                if mat and mat.filename != '':
+                    ext_m = os.path.splitext(mat.filename)[1].lower()
+                    safe_m_name = f"mat_{new_assignment.id}_{mat.filename}"
+                    for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
+                        safe_m_name = safe_m_name.replace(char, '')
+                    
+                    mat.save(os.path.join(app.config['UPLOAD_FOLDER'], safe_m_name))
+                    saved_materials.append(safe_m_name)
+            
+            if saved_materials:
+                new_assignment.materials = ",".join(saved_materials)
+                db.session.commit()
+
             flash('作业创建成功！', 'success')
             
     if request.method == 'POST' and 'batch_import' in request.form:
@@ -742,16 +749,23 @@ def delete_assignment(id):
         subs = Submission.query.filter_by(assignment_id=id).all()
         if len(subs) > 0 and len(subs) > a.last_download_count:
             flash('🚨 危险操作被拦截：该作业还有未打包下载的文件，为防止数据丢失，禁止删除！请先打包下载。', 'error')
-            return redirect(url_for('admin'))
+            return redirect(request.referrer or url_for('admin'))
 
         for sub in subs:
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
             if os.path.exists(filepath): os.remove(filepath)
             db.session.delete(sub)
+            
+        if a.materials:
+            for mat_name in a.materials.split(','):
+                mat_path = os.path.join(app.config['UPLOAD_FOLDER'], mat_name)
+                if os.path.exists(mat_path):
+                    os.remove(mat_path)
+
         db.session.delete(a)
         db.session.commit()
-        flash('作业及所有提交文件已彻底删除', 'success')
-    return redirect(url_for('admin'))
+        flash('作业及所有材料、提交文件已彻底删除', 'success')
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/clear_files/<int:assignment_id>')
 @login_required
@@ -763,7 +777,7 @@ def clear_files(assignment_id):
     
     if len(subs) > a.last_download_count:
         flash('🚨 危险操作被拦截：该作业还有未打包下载的文件，为防止数据丢失，禁止清空！请先打包下载。', 'error')
-        return redirect(url_for('admin'))
+        return redirect(request.referrer or url_for('admin'))
 
     for sub in subs:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
@@ -774,7 +788,7 @@ def clear_files(assignment_id):
     
     db.session.commit()
     flash(f'已清空 {count} 个物理文件，已交名单和记录已保留！', 'success')
-    return redirect(url_for('admin'))
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/mark_lost_as_cleared/<int:assignment_id>')
 @login_required
@@ -804,7 +818,7 @@ def toggle_assignment(id):
             a.is_forced_closed = False 
         db.session.commit()
         flash(f'作业 [{a.title}] 状态已切换', 'success')
-    return redirect(url_for('admin'))
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/force_close/<int:assignment_id>')
 @login_required
@@ -816,7 +830,7 @@ def force_close(assignment_id):
         a.is_forced_closed = True
         db.session.commit()
         flash(f'作业 [{a.title}] 已强制截止', 'success')
-    return redirect(url_for('admin'))
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/cancel_force_close/<int:assignment_id>')
 @login_required
@@ -827,7 +841,7 @@ def cancel_force_close(assignment_id):
         a.is_forced_closed = False
         db.session.commit()
         flash(f'作业 [{a.title}] 已解除强制截止', 'success')
-    return redirect(url_for('admin'))
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/update_deadline/<int:assignment_id>', methods=['POST'])
 @login_required
@@ -841,7 +855,7 @@ def update_deadline(assignment_id):
             
             if new_time < get_bj_time():
                 flash('🚨 修改失败：截止时间不能早于当前时间！', 'error')
-                return redirect(url_for('admin'))
+                return redirect(request.referrer or url_for('admin'))
 
             a.deadline = new_time
             a.is_forced_closed = False 
@@ -849,7 +863,7 @@ def update_deadline(assignment_id):
             flash(f'作业 [{a.title}] 截止时间已更新', 'success')
         except Exception:
             flash('时间格式错误，更新失败', 'error')
-    return redirect(url_for('admin'))
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/update_class/<int:assignment_id>', methods=['POST'])
 @login_required
@@ -863,7 +877,7 @@ def update_class(assignment_id):
         a.class_name = new_class
         db.session.commit()
         flash(f'作业 [{a.title}] 目标班级已修改为: {new_class}', 'success')
-    return redirect(url_for('admin'))
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/update_keyword/<int:assignment_id>', methods=['POST'])
 @login_required
@@ -878,7 +892,7 @@ def update_keyword(assignment_id):
             flash(f'作业 [{a.title}] 的必含词已更新为: {a.check_keyword}', 'success')
         else:
             flash(f'作业 [{a.title}] 的必含词已清除（不再校验）', 'success')
-    return redirect(url_for('admin'))
+    return redirect(request.referrer or url_for('admin'))
 
 @app.route('/admin/delete_submission/<int:submission_id>')
 @login_required
@@ -893,10 +907,67 @@ def delete_submission(submission_id):
         flash(f'已删除 {sub.student_name} 的提交记录。', 'success')
     return redirect(request.referrer or url_for('admin'))
 
-@app.route('/teacher')
+@app.route('/teacher', methods=['GET', 'POST'])
 @login_required
 def teacher():
     if current_user.role != 'teacher': return "无权限访问", 403
+    
+    # 处理老师发布作业的请求
+    all_users = User.query.all()
+    valid_classes = sorted(list(set([u.class_name for u in all_users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
+
+    if request.method == 'POST' and 'create_assignment' in request.form:
+        title = request.form.get('title')
+        deadline_str = request.form.get('deadline')
+        target_class = request.form.get('target_class', '').strip()
+        check_keyword = request.form.get('check_keyword', '').strip()
+        
+        if not target_class:
+            flash('发布失败：目标班级不能为空！如果要发给所有人，请填“全部班级”。', 'error')
+            return redirect(url_for('teacher'))
+
+        if title and deadline_str:
+            deadline = datetime.strptime(deadline_str, '%Y-%m-%dT%H:%M')
+            
+            if deadline < get_bj_time():
+                flash('🚨 发布失败：截止时间不能早于当前时间，请重新选择！', 'error')
+                return redirect(url_for('teacher'))
+                
+            if target_class != '全部班级' and target_class not in valid_classes:
+                flash(f'⚠️ 发布失败：系统里不存在名为 [{target_class}] 的班级，请检查是否打错字！', 'error')
+                return redirect(url_for('teacher'))
+
+            new_assignment = Assignment(
+                title=title, 
+                deadline=deadline, 
+                class_name=target_class,
+                check_keyword=check_keyword if check_keyword else None,
+                publish_time=get_bj_time()
+            )
+            db.session.add(new_assignment)
+            db.session.commit()
+
+            material_files = request.files.getlist('material_files')
+            saved_materials = []
+            
+            for mat in material_files:
+                if mat and mat.filename != '':
+                    ext_m = os.path.splitext(mat.filename)[1].lower()
+                    safe_m_name = f"mat_{new_assignment.id}_{mat.filename}"
+                    for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
+                        safe_m_name = safe_m_name.replace(char, '')
+                    
+                    mat.save(os.path.join(app.config['UPLOAD_FOLDER'], safe_m_name))
+                    saved_materials.append(safe_m_name)
+            
+            if saved_materials:
+                new_assignment.materials = ",".join(saved_materials)
+                db.session.commit()
+
+            flash('作业创建成功！', 'success')
+            return redirect(url_for('teacher'))
+
+    # 渲染数据
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
     
@@ -956,7 +1027,6 @@ def student():
             ext = os.path.splitext(file.filename)[1].lower()
             
             if ext in ['.doc', '.docx']:
-                # 使用通用解析器
                 file_bytes = file.read()
                 file.stream.seek(0)
                 
@@ -966,7 +1036,6 @@ def student():
                     return jsonify({"success": False, "message": "安全拦截：检测到文件包含恶意宏，已被拒绝提交！"}), 400
                 
                 if assignment.check_keyword and not force_submit:
-                    # 去除所有空白字符，提高匹配成功率
                     clean_text = re.sub(r'\s+', '', text_content)
                     if assignment.check_keyword not in clean_text:
                         return jsonify({
@@ -1073,7 +1142,9 @@ def download_file(filename):
 
     if current_user.role not in ['admin', 'teacher']:
         sub = Submission.query.filter_by(student_id=current_user.username, file_name=filename).first()
-        if not sub:
+        is_material = filename.startswith('mat_')
+        
+        if not sub and not is_material:
             flash('安全拦截：你无权下载其他人的作业！', 'error')
             return redirect(request.referrer or url_for('index'))
 
@@ -1088,7 +1159,7 @@ def download_zip(assignment_id):
     
     if not subs:
         flash('该作业暂无学生提交，无法打包。', 'error')
-        return redirect(request.referrer)
+        return redirect(request.referrer or url_for('index'))
 
     assignment.last_download_count = len(subs)
     db.session.commit()
@@ -1198,6 +1269,8 @@ with app.app_context():
             cursor.execute("UPDATE assignment SET publish_time = CURRENT_TIMESTAMP WHERE publish_time IS NULL")
         if 'check_keyword' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN check_keyword VARCHAR(50)")
+        if 'materials' not in assign_columns:
+            cursor.execute("ALTER TABLE assignment ADD COLUMN materials TEXT")
         conn.commit()
 
         cursor.execute("PRAGMA table_info(submission)")
