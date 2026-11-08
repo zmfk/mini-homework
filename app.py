@@ -49,6 +49,19 @@ def add_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
 
+# ==========================================
+# 错误拦截器
+# ==========================================
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({"success": False, "message": "文件太大了！服务器限制最大 20MB，请压缩后重试。"}), 413
+
+@app.errorhandler(500)
+def internal_server_error(error):
+    # 这里按照要求，将“联系老师”改为了“联系管理员”
+    return jsonify({"success": False, "message": "服务器处理文件时开小差了（可能文件损坏），请稍后再试或联系管理员。"}), 500
+# ==========================================
+
 def get_bj_time():
     return datetime.utcnow() + timedelta(hours=8)
 
@@ -116,7 +129,7 @@ class Assignment(db.Model):
     class_name = db.Column(db.String(50), default='全部班级')
     check_keyword = db.Column(db.String(50), nullable=True)
     materials = db.Column(db.Text, nullable=True) 
-    reminder_sent = db.Column(db.Boolean, default=False) # 邮件提醒标记
+    reminder_sent = db.Column(db.Boolean, default=False)
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -171,7 +184,6 @@ def send_aggregated_reminder_email(to_email, student_name, assignments):
         return
 
     try:
-        # 拼接该学生所有即将截止的作业列表
         task_list_str = ""
         for i, a in enumerate(assignments, 1):
             task_list_str += f"{i}. 《{a.title}》，截止时间：{a.deadline.strftime('%Y-%m-%d %H:%M')}\n"
@@ -196,7 +208,6 @@ def check_and_send_reminders():
     with app.app_context():
         try:
             now = get_bj_time()
-            # 提前 6 小时提醒
             target_time = now + timedelta(hours=6)
             
             assignments = Assignment.query.filter(
@@ -211,14 +222,10 @@ def check_and_send_reminders():
             if not assignments:
                 return
 
-            # 查出所有学生，减少数据库查询次数
             all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
-            
-            # 核心字典：用于汇总每个学生需要被提醒的作业 { 学号: {'user': UserObj, 'assignments': [作业列表]} }
             student_tasks = {}
 
             for a in assignments:
-                # 数据库原子锁：防止并发重复处理
                 result = db.session.execute(
                     db.text("UPDATE assignment SET reminder_sent = 1 WHERE id = :id AND reminder_sent = 0"),
                     {"id": a.id}
@@ -226,7 +233,6 @@ def check_and_send_reminders():
                 db.session.commit()
                 
                 if result.rowcount > 0:
-                    # 匹配目标班级的学生
                     if a.class_name == '全部班级':
                         target_students = all_students
                     else:
@@ -234,17 +240,13 @@ def check_and_send_reminders():
                         
                     subs = Submission.query.filter_by(assignment_id=a.id).all()
                     sub_ids = [s.student_id for s in subs]
-                    
-                    # 筛选出未交且有邮箱的
                     not_submitted = [u for u in target_students if u.username not in sub_ids and u.email]
                     
-                    # 把该作业塞进对应学生的任务字典里
                     for stu in not_submitted:
                         if stu.username not in student_tasks:
                             student_tasks[stu.username] = {'user': stu, 'assignments': []}
                         student_tasks[stu.username]['assignments'].append(a)
 
-            # 遍历汇总字典，给每个学生发一封包含多份作业的提醒邮件
             for username, data in student_tasks.items():
                 stu = data['user']
                 pending_assigns = data['assignments']
@@ -262,7 +264,6 @@ def lazy_check_reminders():
         return
         
     current_time = time.time()
-    # 15分钟冷却时间
     if current_time - _last_reminder_check < 900:
         return
         
@@ -275,7 +276,6 @@ def lazy_check_reminders():
     except Exception:
         pass
         
-    # 启动一次性后台线程，不阻塞当前页面的访问
     threading.Thread(target=check_and_send_reminders).start()
 # ==========================================
 
@@ -998,7 +998,7 @@ def update_deadline(assignment_id):
 
             a.deadline = new_time
             a.is_forced_closed = False 
-            a.reminder_sent = False # 重置发送状态
+            a.reminder_sent = False 
             db.session.commit()
             flash(f'作业 [{a.title}] 截止时间已更新', 'success')
         except Exception:
