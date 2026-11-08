@@ -52,39 +52,6 @@
                 {% endif %}
             </div>
 
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 relative overflow-hidden">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-sm font-bold text-gray-900 flex items-center">
-                        <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-                        密码重置待办
-                    </h3>
-                    {% if reset_requests|length > 0 %}
-                        <span class="px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 rounded-full border border-red-200 flex items-center animate-pulse">
-                            {{ reset_requests|length }} 个待处理
-                        </span>
-                    {% endif %}
-                </div>
-                
-                {% if reset_requests %}
-                    <div class="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                        {% for req in reset_requests %}
-                        <div class="bg-blue-50/50 p-2 rounded-lg border border-blue-100 flex items-center justify-between shadow-sm">
-                            <div class="min-w-0 pr-2">
-                                <p class="text-xs font-bold text-gray-800 truncate">{{ req.student_name }} ({{ req.student_id }})</p>
-                                <p class="text-[10px] text-gray-400">{{ req.request_time.strftime('%m-%d %H:%M') }}</p>
-                            </div>
-                            <div class="flex space-x-1 flex-shrink-0">
-                                <a href="/admin/handle_reset_request/{{ req.id }}" onclick="return confirm('确定将 {{ req.student_name }} 的密码重置为学号吗？')" class="text-[10px] bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded shadow-sm">同意</a>
-                                <a href="/admin/dismiss_reset_request/{{ req.id }}" onclick="return confirm('确定忽略此申请吗？')" class="text-[10px] bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded shadow-sm">忽略</a>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    <p class="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">暂无重置密码申请</p>
-                {% endif %}
-            </div>
-
             <div class="bg-white rounded-2xl shadow-sm border {% if sys_config.is_maintenance %}border-red-200 ring-2 ring-red-100{% else %}border-gray-100{% endif %} p-5 transition-all">
                 <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center">
                     <svg class="w-4 h-4 mr-2 {% if sys_config.is_maintenance %}text-red-500 animate-pulse{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
@@ -164,10 +131,10 @@
                     <div>
                         <label class="block text-[11px] text-gray-500 mb-1">
                             Excel直接复制，自动跳过表头。<br>
-                            格式：<code>学号 姓名 班级 [角色]</code><br>
-                            例如：<code>2023001 张三 计科1班</code>
+                            格式：<code>学号 姓名 班级 邮箱/QQ [角色]</code><br>
+                            例如：<code>2023001 张三 计科1班 123456</code>
                         </label>
-                        <textarea name="student_data" rows="4" required placeholder="2023001 张三 计科1班&#10;2023002 李四 计科2班" 
+                        <textarea name="student_data" rows="4" required placeholder="2023001 张三 计科1班 123456" 
                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-gray-50 focus:bg-white text-xs"></textarea>
                     </div>
                     <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded-lg hover:bg-green-700 transition-all shadow-sm text-xs">
@@ -175,10 +142,34 @@
                     </button>
                 </form>
             </div>
+            
+            <!-- 操作日志面板 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mt-6">
+                <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    最近操作日志 (50条)
+                </h3>
+                
+                <div class="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar text-xs">
+                    {% for log in action_logs %}
+                    <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                        <div class="flex justify-between items-center mb-1">
+                            <strong class="text-gray-800">{{ log.student_id }}</strong>
+                            <span class="text-gray-400 text-[10px]">{{ log.time.strftime('%m-%d %H:%M:%S') }}</span>
+                        </div>
+                        <p class="text-blue-600 font-medium mb-1">{{ log.action }}</p>
+                        <div class="text-gray-500 text-[10px] break-all device-info" data-ua="{{ log.user_agent }}"></div>
+                        <p class="text-gray-400 text-[10px] mt-0.5">IP: {{ log.ip_address }}</p>
+                    </div>
+                    {% else %}
+                    <p class="text-gray-400 text-center py-4">暂无操作记录</p>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- 中间列 -->
+    <!-- 中间列：作业看板 -->
     <div class="lg:col-span-6 flex flex-col min-h-0 pb-4 order-1 lg:order-2">
         <div class="overflow-y-auto pr-2 space-y-6 custom-scrollbar lg:max-h-full">
             {% if need_backup %}
@@ -215,6 +206,7 @@
                 {% for a in assignments %}
                 <div id="assignment-card-{{ a.id }}" class="assignment-card bg-white rounded-2xl shadow-sm border {% if a.is_archived %}border-gray-300 bg-gray-50/50{% else %}border-gray-100{% endif %} overflow-hidden hover:shadow-md transition-shadow" data-archived="{{ 'true' if a.is_archived else 'false' }}">
                     
+                    <!-- 异常文件提醒 -->
                     {% if report[a.id].lost_names %}
                     <div class="bg-red-50 px-4 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-red-100 gap-3">
                         <div class="text-xs text-red-700 min-w-0">
@@ -249,7 +241,7 @@
                                     </span>
                                     {% if a.check_keyword %}
                                     <span class="px-1.5 py-0.5 text-[10px] font-bold bg-yellow-50 text-yellow-600 border border-yellow-200 rounded" title="必须包含：{{ a.check_keyword }}">
-                                        已开启必含词校验
+                                        🛡️ 模板校验
                                     </span>
                                     {% endif %}
                                     {% if a.is_archived %}
@@ -312,12 +304,6 @@
                                 <a href="javascript:void(0)" data-id="{{ a.id }}" data-class="{{ a.class_name }}" onclick="promptChangeClass(this)" class="text-indigo-600 hover:underline mt-1 sm:mt-0">改班级</a>
                                 
                                 <span class="text-gray-300 sm:inline hidden">|</span>
-                                <!-- 必含词按钮 -->
-                                <a href="javascript:void(0)" data-id="{{ a.id }}" data-keyword="{{ a.check_keyword or '' }}" onclick="promptChangeKeyword(this)" class="{% if a.check_keyword %}text-yellow-600{% else %}text-gray-500{% endif %} hover:underline mt-1 sm:mt-0">
-                                    {% if a.check_keyword %}改校验词{% else %}加必含词{% endif %}
-                                </a>
-                                
-                                <span class="text-gray-300 sm:inline hidden">|</span>
                                 {% if a.is_archived %}
                                     <a href="/admin/toggle_archive/{{ a.id }}" class="text-blue-600 hover:underline mt-1 sm:mt-0">取消归档</a>
                                 {% elif a.is_forced_closed or now > a.deadline %}
@@ -345,6 +331,7 @@
                     {% endif %}
 
                     <div class="bg-gray-50/50 p-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <!-- 已交名单 -->
                         <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col min-h-0">
                             <strong class="text-green-600 block mb-2.5 flex items-center border-b pb-2 flex-shrink-0">
                                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -379,6 +366,7 @@
                             </ul>
                         </div>
                         
+                        <!-- 未交名单 -->
                         <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col min-h-0">
                             <strong class="text-red-500 block mb-2.5 flex items-center border-b pb-2 flex-shrink-0">
                                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -406,7 +394,7 @@
         </div>
     </div>
 
-    <!-- 右侧列 -->
+    <!-- 右侧列：用户管理 -->
     <div class="lg:col-span-3 flex flex-col min-h-0 pb-4 order-3 lg:order-3">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col h-full min-h-0 lg:max-h-full">
             <h3 class="text-base font-bold text-gray-900 mb-3 flex items-center flex-shrink-0">
@@ -474,7 +462,7 @@
     </div>
 </div>
 
-<div id="data-container" data-total-subs="{{ current_total_subs }}" data-reset-count="{{ reset_requests|length }}" class="hidden"></div>
+<div id="data-container" data-total-subs="{{ current_total_subs }}" class="hidden"></div>
 
 <div id="refresh-toast" class="fixed bottom-8 right-8 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
     <div class="flex items-center">
@@ -485,17 +473,6 @@
         <span class="font-medium text-sm">有学生刚刚提交了作业！</span>
     </div>
     <button onclick="window.location.reload()" class="bg-white text-gray-900 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">立即刷新</button>
-</div>
-
-<div id="reset-toast" class="fixed bottom-24 right-8 bg-blue-600 text-white px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 flex items-center space-x-4 z-50">
-    <div class="flex items-center">
-        <span class="relative flex h-3 w-3 mr-3">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-300 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
-        </span>
-        <span class="font-medium text-sm">有新的密码重置申请！</span>
-    </div>
-    <button onclick="window.location.reload()" class="bg-white text-blue-600 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">查看待办</button>
 </div>
 
 <script>
@@ -538,7 +515,6 @@
 
         const dataContainer = document.getElementById('data-container');
         let currentTotalSubs = parseInt(dataContainer.getAttribute('data-total-subs')) || 0;
-        let currentResetReqs = parseInt(dataContainer.getAttribute('data-reset-count')) || 0;
         
         setInterval(function() {
             fetch('/api/submission_count')
@@ -549,18 +525,7 @@
                         currentTotalSubs = data.total; 
                     }
                 })
-                .catch(() => console.log("检查作业更新失败"));
-            
-            fetch('/api/check_reset_requests')
-                .then(res => res.ok ? res.json() : Promise.reject())
-                .then(data => {
-                    if (data.total > currentResetReqs) {
-                        document.getElementById('reset-toast').classList.remove('translate-y-20', 'opacity-0');
-                        currentResetReqs = data.total; 
-                    }
-                })
-                .catch(() => console.log("检查重置请求失败"));
-
+                .catch(() => console.log("检查更新失败"));
         }, 60000);
 
         const searchInput = document.getElementById('userSearchInput');
@@ -589,6 +554,33 @@
         });
 
         toggleArchiveView(false);
+
+        // 解析操作日志的 UA
+        document.querySelectorAll('.device-info').forEach(el => {
+            const ua = el.getAttribute('data-ua') || '';
+            let device = "未知设备";
+            let os = "未知系统";
+            let browser = "未知浏览器";
+
+            if (ua.includes("iPhone")) { device = "iPhone"; os = "iOS"; }
+            else if (ua.includes("iPad")) { device = "iPad"; os = "iOS"; }
+            else if (ua.includes("Android")) { 
+                device = "安卓手机/平板"; os = "Android"; 
+                let match = ua.match(/Android\s+[^;]+;\s+([^;]+)\s+Build/);
+                if(match && match[1]) device = match[1]; 
+            }
+            else if (ua.includes("Windows NT 10.0")) { device = "电脑"; os = "Windows 10/11"; }
+            else if (ua.includes("Windows NT")) { device = "电脑"; os = "Windows"; }
+            else if (ua.includes("Macintosh")) { device = "电脑"; os = "Mac OS"; }
+            else if (ua.includes("Linux")) { device = "电脑"; os = "Linux"; }
+
+            if (ua.includes("Edg/")) browser = "Edge";
+            else if (ua.includes("Chrome/")) browser = "Chrome";
+            else if (ua.includes("Safari/")) browser = "Safari";
+            else if (ua.includes("Firefox/")) browser = "Firefox";
+
+            el.innerHTML = `📱 ${device} | ${os} | ${browser}`;
+        });
     });
 
     let showingArchived = false;
@@ -645,33 +637,6 @@
             form.submit();
         }
     }
-
-    // ====== 新增的修改必含词 JS ======
-    function promptChangeKeyword(btn) {
-        const assignmentId = btn.dataset.id;
-        const currentKeyword = btn.dataset.keyword || '';
-        
-        const hint = currentKeyword 
-            ? `当前必含词：${currentKeyword}\n\n请输入新的必含词（留空并确定 = 清除校验）：` 
-            : `该作业暂无必含词。\n\n请输入要校验的关键词（留空并确定 = 不设置）：`;
-        
-        let newKeyword = prompt(hint, currentKeyword);
-        if (newKeyword !== null) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = `/admin/update_keyword/${assignmentId}`;
-            
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'new_keyword';
-            input.value = newKeyword.trim();
-            
-            form.appendChild(input);
-            document.body.appendChild(form);
-            form.submit();
-        }
-    }
-    // =================================
 
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', function() {

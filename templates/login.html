@@ -11,6 +11,7 @@
             <label class="block text-sm text-gray-600 mb-1">密码</label>
             <input type="password" name="password" required class="w-full border border-gray-300 p-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors">
         </div>
+        <input type="hidden" name="device_fingerprint" id="login-fp">
         <button type="submit" class="w-full bg-black text-white p-3 rounded-lg mt-2 hover:bg-gray-800 transition shadow-sm font-medium">登 录</button>
     </form>
 
@@ -19,15 +20,9 @@
         
         <button type="button" onclick="toggleResetForm()" class="w-full bg-blue-50 text-blue-600 font-bold py-2.5 rounded-xl border border-blue-200 hover:bg-blue-100 transition-colors mb-3 flex items-center justify-center">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-            在线提交密码重置申请
+            通过绑定邮箱自助重置
         </button>
 
-        <!-- 修改这里：只保留管理员，不再提任课老师 -->
-        <p class="text-xs text-gray-400">
-            若系统无法访问，请联系系统管理员
-        </p>
-
-        <!-- 折叠的重置密码申请表单 -->
         <div id="resetFormContainer" class="hidden mt-4 text-left bg-gray-50 p-4 rounded-xl border border-gray-200">
             <div class="space-y-3">
                 <div>
@@ -38,16 +33,58 @@
                     <label class="block text-xs text-gray-600 mb-1">姓名</label>
                     <input type="text" id="reset-student-name" placeholder="请输入姓名" class="w-full border border-gray-300 p-2 rounded-lg focus:outline-none focus:border-blue-500 text-sm">
                 </div>
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">邮箱验证码</label>
+                    <div class="flex space-x-2">
+                        <input type="text" id="reset-code" placeholder="输入6位验证码" class="w-full border border-gray-300 p-2 rounded-lg focus:outline-none focus:border-blue-500 text-sm">
+                        <button type="button" id="send-code-btn" onclick="sendEmailCode()" class="bg-blue-100 text-blue-700 font-medium px-3 py-2 rounded-lg hover:bg-blue-200 text-sm whitespace-nowrap min-w-[100px]">获取验证码</button>
+                    </div>
+                </div>
                 <div id="reset-msg" class="hidden text-sm p-2 rounded text-center"></div>
-                <button type="button" onclick="submitResetRequest()" class="w-full bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm shadow-md shadow-blue-500/20">
-                    发送重置申请
+                <button type="button" onclick="verifyEmailCode()" class="w-full bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm shadow-md">
+                    验证并重置密码
                 </button>
             </div>
         </div>
+        
+        <p class="text-xs text-gray-400 mt-2">若未绑定邮箱，请联系管理员人工处理</p>
     </div>
 </div>
 
 <script>
+    function getSuperFingerprint() {
+        try {
+            const screenStr = window.screen.width + 'x' + window.screen.height + 'x' + window.screen.colorDepth;
+            const core = navigator.hardwareConcurrency || 0;
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.textBaseline = "top";
+            ctx.font = "14px 'Arial'";
+            ctx.fillStyle = "#f60";
+            ctx.fillRect(125, 1, 62, 20);
+            ctx.fillStyle = "#069";
+            ctx.fillText("Hello, anti-fraud!", 2, 15);
+            const canvasData = canvas.toDataURL();
+
+            const rawString = `${screenStr}|${core}|${timezone}|${canvasData}`;
+            let hash = 0;
+            for (let i = 0; i < rawString.length; i++) {
+                let chr = rawString.charCodeAt(i);
+                hash = ((hash << 5) - hash) + chr;
+                hash |= 0; 
+            }
+            return Math.abs(hash).toString(16); 
+        } catch (e) {
+            return "unknown";
+        }
+    }
+
+    window.onload = function() {
+        document.getElementById('login-fp').value = getSuperFingerprint();
+    }
+
     function toggleResetForm() {
         const container = document.getElementById('resetFormContainer');
         const msgBox = document.getElementById('reset-msg');
@@ -59,43 +96,88 @@
         }
     }
 
-    function submitResetRequest() {
+    let countdown = 0;
+    let timer = null;
+
+    function sendEmailCode() {
         const studentId = document.getElementById('reset-student-id').value.trim();
         const studentName = document.getElementById('reset-student-name').value.trim();
         const msgBox = document.getElementById('reset-msg');
+        const btn = document.getElementById('send-code-btn');
 
         if (!studentId || !studentName) {
-            msgBox.textContent = "请填写完整的学号和姓名！";
+            msgBox.textContent = "请先填写学号和姓名！";
             msgBox.className = "text-sm text-red-600 bg-red-50 p-2 rounded text-center border border-red-200";
             msgBox.classList.remove('hidden');
             return;
         }
 
-        fetch('/api/request_reset', {
+        btn.disabled = true;
+        btn.textContent = "发送中...";
+
+        fetch('/api/send_email_code', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ student_id: studentId, student_name: studentName })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                student_id: studentId, 
+                student_name: studentName,
+                fingerprint: getSuperFingerprint()
+            })
         })
         .then(res => res.json())
         .then(data => {
             msgBox.textContent = data.message;
             msgBox.classList.remove('hidden');
-            
             if (data.success) {
                 msgBox.className = "text-sm text-green-600 bg-green-50 p-2 rounded text-center border border-green-200";
-                document.getElementById('reset-student-id').value = '';
-                document.getElementById('reset-student-name').value = '';
-                setTimeout(() => { toggleResetForm(); msgBox.classList.add('hidden'); }, 4000);
+                countdown = 60;
+                btn.textContent = countdown + "s 后重发";
+                timer = setInterval(() => {
+                    countdown--;
+                    if (countdown <= 0) {
+                        clearInterval(timer);
+                        btn.disabled = false;
+                        btn.textContent = "获取验证码";
+                    } else {
+                        btn.textContent = countdown + "s 后重发";
+                    }
+                }, 1000);
             } else {
                 msgBox.className = "text-sm text-red-600 bg-red-50 p-2 rounded text-center border border-red-200";
+                btn.disabled = false;
+                btn.textContent = "获取验证码";
             }
         })
         .catch(err => {
-            msgBox.textContent = "网络错误，请稍后再试！";
+            msgBox.textContent = "网络错误！";
+            msgBox.className = "text-sm text-red-600 bg-red-50 p-2 rounded text-center border border-red-200";
+            btn.disabled = false;
+            btn.textContent = "获取验证码";
+        });
+    }
+
+    function verifyEmailCode() {
+        const code = document.getElementById('reset-code').value.trim();
+        const msgBox = document.getElementById('reset-msg');
+
+        if (!code) {
+            msgBox.textContent = "请输入验证码";
             msgBox.className = "text-sm text-red-600 bg-red-50 p-2 rounded text-center border border-red-200";
             msgBox.classList.remove('hidden');
+            return;
+        }
+
+        fetch('/api/verify_email_code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code })
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert(data.message);
+            if (data.success) {
+                window.location.reload(); 
+            }
         });
     }
 </script>

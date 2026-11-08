@@ -4,8 +4,12 @@ import zipfile
 import requests
 import sqlite3
 import re
+import random
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -58,41 +62,7 @@ def get_folder_size(folder_path):
                     pass
     return round(total_size / (1024 * 1024), 2)
 
-# ==========================================
-# 新增：通用的 Word 文本提取器
-# ==========================================
-def extract_text_from_word(file_bytes):
-    text_content = ""
-    has_macro = False
-    
-    # 尝试1：当做 docx (ZIP) 解析
-    try:
-        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-            if 'word/vbaProject.bin' in zf.namelist():
-                has_macro = True
-            
-            if 'word/document.xml' in zf.namelist():
-                xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
-                # 将各种标签替换为空格，防止单词粘连，随后统一去空格匹配
-                text_content = re.sub(r'<[^>]+>', ' ', xml_content)
-                return text_content, has_macro
-    except Exception:
-        pass # 不是 zip 格式，说明大概率是老版 doc，或者文件损坏
-        
-    # 尝试2：当做 doc (二进制流) 暴力提取
-    # 老版 doc 通常内部包含大量 utf-16-le 编码的文本，同时也混杂其它编码
-    try:
-        text_utf16 = file_bytes.decode('utf-16-le', errors='ignore')
-        text_utf8 = file_bytes.decode('utf-8', errors='ignore')
-        text_gbk = file_bytes.decode('gbk', errors='ignore')
-        # 三种方式暴力解码后拼接在一起，宁可多抓不能漏抓
-        text_content = text_utf16 + " " + text_utf8 + " " + text_gbk
-    except Exception:
-        pass
-        
-    return text_content, has_macro
-# ==========================================
-
+# ================= 数据模型 =================
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -100,6 +70,8 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(50), nullable=False)
     class_name = db.Column(db.String(50), default='默认班级')
+    email = db.Column(db.String(100), nullable=True) # 邮箱/QQ
+    known_fingerprints = db.Column(db.String(255), nullable=True) # 设备指纹记录
 
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -111,8 +83,7 @@ class Assignment(db.Model):
     is_archived = db.Column(db.Boolean, default=False)
     last_download_count = db.Column(db.Integer, default=0)
     class_name = db.Column(db.String(50), default='全部班级')
-    check_keyword = db.Column(db.String(50), nullable=True)
-    exclude_keyword = db.Column(db.String(255), nullable=True) 
+    check_keyword = db.Column(db.String(50), nullable=True) # 防伪词
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -121,7 +92,7 @@ class Submission(db.Model):
     student_name = db.Column(db.String(50), nullable=False)
     file_name = db.Column(db.String(150), nullable=False)
     submit_time = db.Column(db.DateTime, server_default=db.func.now())
-    is_cleared = db.Column(db.Boolean, default=False) 
+    is_cleared = db.Column(db.Boolean, default=False) # 是否被管理员清理
 
 class SystemConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -130,15 +101,27 @@ class SystemConfig(db.Model):
     start_time = db.Column(db.DateTime, nullable=True)
     end_time = db.Column(db.DateTime, nullable=True)
 
-class PasswordResetRequest(db.Model):
+class ActionLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.String(50), nullable=False)
-    student_name = db.Column(db.String(50), nullable=False)
-    request_time = db.Column(db.DateTime, default=get_bj_time)
+    action = db.Column(db.String(100), nullable=False)
+    ip_address = db.Column(db.String(50))
+    user_agent = db.Column(db.String(255))
+    time = db.Column(db.DateTime, default=get_bj_time)
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+def log_action(student_id, action, req_obj=None):
+    try:
+        ip = req_obj.remote_addr if req_obj else 'unknown'
+        ua = req_obj.user_agent.string[:250] if req_obj else 'unknown'
+        log = ActionLog(student_id=student_id, action=action, ip_address=ip, user_agent=ua)
+        db.session.add(log)
+        db.session.commit()
+    except Exception as e:
+        print("记录日志失败", e)
 
 @app.context_processor
 def inject_sys_config():
@@ -146,7 +129,7 @@ def inject_sys_config():
 
 @app.before_request
 def check_maintenance():
-    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'api_request_reset']
+    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'api_send_email_code', 'api_verify_email_code']
     if request.endpoint in allowed_endpoints:
         return
 
@@ -207,6 +190,7 @@ def get_pa_stats():
         'api_connected': bool(token and username)
     }
 
+# ================= 路由：认证与密码 =================
 @app.route('/')
 def index():
     if not current_user.is_authenticated:
@@ -219,42 +203,102 @@ def login():
         user = User.query.filter_by(username=request.form.get('username')).first()
         if user and check_password_hash(user.password_hash, request.form.get('password')):
             login_user(user)
+            
+            # 记录设备指纹
+            fp = request.form.get('device_fingerprint', 'unknown')
+            if fp != 'unknown':
+                fps = user.known_fingerprints.split(',') if user.known_fingerprints else []
+                if fp not in fps:
+                    fps.insert(0, fp)
+                    user.known_fingerprints = ','.join(fps[:3])
+                    db.session.commit()
+                    
             return redirect(url_for('index'))
         flash('学号或密码错误', 'error')
     
     contact_email = os.environ.get('CONTACT_EMAIL', '')
     return render_template('login.html', contact_email=contact_email)
 
-@app.route('/api/request_reset', methods=['POST'])
-def api_request_reset():
+@app.route('/api/send_email_code', methods=['POST'])
+def api_send_email_code():
     data = request.get_json()
     student_id = data.get('student_id', '').strip()
     student_name = data.get('student_name', '').strip()
-
-    if not student_id or not student_name:
-        return jsonify({"success": False, "message": "学号和姓名不能为空"})
+    req_fp = data.get('fingerprint', 'unknown')
 
     user = User.query.filter_by(username=student_id).first()
     
     if not user or user.name != student_name:
         return jsonify({"success": False, "message": "学号或姓名错误，请检查输入"})
+        
+    if not user.email:
+        return jsonify({"success": False, "message": "⚠️ 您未绑定邮箱，无法自助重置密码。请直接联系管理员核实身份后进行人工重置。"})
 
-    existing_req = PasswordResetRequest.query.filter_by(student_id=student_id).first()
-    if existing_req:
-        return jsonify({"success": True, "message": "您已提交过申请，请耐心等待管理员处理"})
+    code = str(random.randint(100000, 999999))
+    session['reset_code'] = code
+    session['reset_id'] = student_id
+    session['reset_time'] = datetime.now().timestamp()
 
-    new_req = PasswordResetRequest(student_id=student_id, student_name=student_name)
-    db.session.add(new_req)
-    db.session.commit()
-    return jsonify({"success": True, "message": "申请已发送，请等待管理员为您重置密码"})
+    is_known = False
+    if req_fp != 'unknown' and user.known_fingerprints and req_fp in user.known_fingerprints.split(','):
+        is_known = True
+        
+    warning_text = ""
+    if not is_known and user.known_fingerprints:
+        warning_text = "\n\n⚠️【安全警告】系统检测到此次请求来自一台您从未使用过的新设备！如果这不是您本人的操作，请忽略此邮件，并立即联系管理员！"
 
-@app.route('/api/check_reset_requests')
-@login_required
-def check_reset_requests():
-    if current_user.role not in ['admin', 'teacher']:
-        return jsonify({"error": "unauthorized"}), 403
-    total = PasswordResetRequest.query.count()
-    return jsonify({"total": total})
+    mail_host = os.environ.get('MAIL_SERVER', 'smtp.qq.com')
+    mail_port = int(os.environ.get('MAIL_PORT', 465))
+    mail_user = os.environ.get('MAIL_USERNAME', '')
+    mail_pass = os.environ.get('MAIL_PASSWORD', '')
+
+    if not mail_user or not mail_pass:
+        return jsonify({"success": False, "message": "管理员未配置邮箱服务，无法发送验证码。"})
+
+    try:
+        message = MIMEText(f"您好，{user.name}：\n\n您正在申请重置作业系统的密码。您的验证码是：{code}\n\n验证码5分钟内有效。如非本人操作，请忽略本邮件。{warning_text}", 'plain', 'utf-8')
+        message['From'] = Header(f"作业提交系统 <{mail_user}>")
+        message['To'] = Header(user.email)
+        message['Subject'] = Header("【作业系统】密码重置验证码")
+
+        smtpObj = smtplib.SMTP_SSL(mail_host, mail_port)
+        smtpObj.login(mail_user, mail_pass)
+        smtpObj.sendmail(mail_user, [user.email], message.as_string())
+        smtpObj.quit()
+        
+        return jsonify({"success": True, "message": f"验证码已发送至您的邮箱：{user.email[:3]}***{user.email[-4:]}"})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"邮件发送失败，请稍后再试。错误信息：{str(e)}"})
+
+@app.route('/api/verify_email_code', methods=['POST'])
+def api_verify_email_code():
+    data = request.get_json()
+    code = data.get('code', '').strip()
+
+    save_code = session.get('reset_code')
+    save_id = session.get('reset_id')
+    save_time = session.get('reset_time')
+
+    if not save_code or not save_id or not save_time:
+        return jsonify({"success": False, "message": "请先获取验证码"})
+
+    if datetime.now().timestamp() - save_time > 300:
+        return jsonify({"success": False, "message": "验证码已过期，请重新获取"})
+
+    if code != save_code:
+        return jsonify({"success": False, "message": "验证码错误，请检查输入"})
+
+    user = User.query.filter_by(username=save_id).first()
+    if user:
+        user.password_hash = generate_password_hash(user.username)
+        db.session.commit()
+        log_action(user.username, "通过邮箱重置了密码", request)
+        session.pop('reset_code', None)
+        session.pop('reset_id', None)
+        session.pop('reset_time', None)
+        return jsonify({"success": True, "message": f"密码已成功重置为您的学号【{user.username}】，请返回登录！"})
+        
+    return jsonify({"success": False, "message": "用户不存在"})
 
 @app.route('/logout')
 @login_required
@@ -292,13 +336,14 @@ def change_password():
 
         current_user.password_hash = generate_password_hash(new_pwd.strip())
         db.session.commit()
-        
+        log_action(current_user.username, "修改了登录密码", request)
         flash('密码修改成功！请牢记新密码。', 'success')
         return redirect(url_for(f'{current_user.role}'))
 
     contact_email = os.environ.get('CONTACT_EMAIL', '')
     return render_template('change_password.html', contact_email=contact_email)
 
+# ================= 路由：管理员/教师 =================
 @app.route('/api/submission_count')
 @login_required
 def submission_count():
@@ -390,13 +435,14 @@ def admin():
                     continue
 
                 class_name = parts[2].strip() if len(parts) >= 3 else '默认班级'
+                email = parts[3].strip() if len(parts) >= 4 else None 
                 role = 'student'
                 
-                if len(parts) >= 4 and parts[3].strip().lower() in ['admin', 'teacher']:
-                    role = parts[3].strip().lower()
-                elif len(parts) == 3 and parts[2].strip().lower() in ['admin', 'teacher']:
-                    role = parts[2].strip().lower()
-                    class_name = '默认班级'
+                if len(parts) >= 5 and parts[4].strip().lower() in ['admin', 'teacher']:
+                    role = parts[4].strip().lower()
+
+                if email and email.isdigit():
+                    email = f"{email}@qq.com"
 
                 if not User.query.filter_by(username=username).first():
                     new_user = User(
@@ -404,15 +450,16 @@ def admin():
                         password_hash=generate_password_hash(username),
                         role=role,
                         name=name,
-                        class_name=class_name
+                        class_name=class_name,
+                        email=email
                     )
                     db.session.add(new_user)
                     count += 1
                 else:
                     existing_user = User.query.filter_by(username=username).first()
                     existing_user.class_name = class_name
-                    if role != 'student':
-                        existing_user.role = role
+                    if email: existing_user.email = email
+                    if role != 'student': existing_user.role = role
         db.session.commit()
         
         if invalid_count > 0:
@@ -485,7 +532,7 @@ def admin():
     pa_stats = get_pa_stats()
     current_total_subs = Submission.query.count()
     sys_config = SystemConfig.query.first()
-    reset_requests = PasswordResetRequest.query.order_by(PasswordResetRequest.request_time.desc()).all()
+    action_logs = ActionLog.query.order_by(ActionLog.id.desc()).limit(50).all()
 
     return render_template('admin.html', 
                            users=users, 
@@ -498,37 +545,9 @@ def admin():
                            pa_stats=pa_stats,
                            all_classes=all_classes,
                            sys_config=sys_config,
-                           reset_requests=reset_requests)
+                           action_logs=action_logs)
 
-@app.route('/admin/handle_reset_request/<int:req_id>')
-@login_required
-def handle_reset_request(req_id):
-    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
-    req = PasswordResetRequest.query.get(req_id)
-    if req:
-        user = User.query.filter_by(username=req.student_id).first()
-        if user:
-            user.password_hash = generate_password_hash(user.username)
-            db.session.delete(req)
-            db.session.commit()
-            flash(f'已同意 {req.student_name} 的申请，密码已重置为学号', 'success')
-        else:
-            flash('该学号已不存在，可能已被删除', 'error')
-            db.session.delete(req)
-            db.session.commit()
-    return redirect(url_for('admin'))
-
-@app.route('/admin/dismiss_reset_request/<int:req_id>')
-@login_required
-def dismiss_reset_request(req_id):
-    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
-    req = PasswordResetRequest.query.get(req_id)
-    if req:
-        db.session.delete(req)
-        db.session.commit()
-        flash(f'已忽略 {req.student_name} 的密码重置申请', 'success')
-    return redirect(url_for('admin'))
-
+# ================= 路由：通用管理操作 =================
 @app.route('/admin/export_summary')
 @login_required
 def export_summary():
@@ -794,21 +813,6 @@ def update_class(assignment_id):
         flash(f'作业 [{a.title}] 目标班级已修改为: {new_class}', 'success')
     return redirect(url_for('admin'))
 
-@app.route('/admin/update_keyword/<int:assignment_id>', methods=['POST'])
-@login_required
-def update_keyword(assignment_id):
-    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
-    a = Assignment.query.get(assignment_id)
-    new_keyword = request.form.get('new_keyword', '').strip()
-    if a:
-        a.check_keyword = new_keyword[:50] if new_keyword else None
-        db.session.commit()
-        if a.check_keyword:
-            flash(f'作业 [{a.title}] 的必含词已更新为: {a.check_keyword}', 'success')
-        else:
-            flash(f'作业 [{a.title}] 的必含词已清除（不再校验）', 'success')
-    return redirect(url_for('admin'))
-
 @app.route('/admin/delete_submission/<int:submission_id>')
 @login_required
 def delete_submission(submission_id):
@@ -825,6 +829,7 @@ def delete_submission(submission_id):
 @app.route('/teacher')
 @login_required
 def teacher():
+    # (教师端逻辑与管理员高度重合，直接展示看板)
     if current_user.role != 'teacher': return "无权限访问", 403
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
@@ -861,6 +866,7 @@ def teacher():
     current_total_subs = Submission.query.count()
     return render_template('teacher.html', assignments=assignments, report=report, now=now_bj, current_total_subs=current_total_subs, all_classes=all_classes)
 
+# ================= 路由：学生端 =================
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
 def student():
@@ -884,25 +890,48 @@ def student():
         if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
             
-            if ext in ['.doc', '.docx']:
-                # 只要后缀是 doc 或 docx，一律放入通用提取器进行深度检查
-                file_bytes = file.read()
-                file.stream.seek(0)
-                
-                text_content, has_macro = extract_text_from_word(file_bytes)
-                
-                if has_macro:
-                    return jsonify({"success": False, "message": "安全拦截：检测到文件包含恶意宏，已被拒绝提交！"}), 400
-                
+            if ext == '.docx':
+                try:
+                    with zipfile.ZipFile(file.stream) as zf:
+                        if 'word/vbaProject.bin' in zf.namelist():
+                            return jsonify({"success": False, "message": "检测到文件包含恶意宏，已被拒绝提交！"}), 400
+                        
+                        if assignment.check_keyword and not force_submit:
+                            if 'word/document.xml' in zf.namelist():
+                                xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
+                                text_content = re.sub(r'<[^>]+>', '', xml_content)
+                                clean_text = re.sub(r'\s+', '', text_content)
+                                
+                                if assignment.check_keyword not in clean_text:
+                                    return jsonify({
+                                        "success": False, 
+                                        "warning": True, 
+                                        "message": f"系统检测到您的 .docx 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n如果确认无误，请点击“确定”继续提交。"
+                                    }), 400
+
+                except Exception:
+                    return jsonify({"success": False, "message": "文件损坏或格式不正确！"}), 400
+                finally:
+                    file.stream.seek(0) 
+
+            elif ext == '.doc':
                 if assignment.check_keyword and not force_submit:
-                    # 去除所有空白字符，提高匹配成功率
-                    clean_text = re.sub(r'\s+', '', text_content)
-                    if assignment.check_keyword not in clean_text:
-                        return jsonify({
-                            "success": False, 
-                            "warning": True, 
-                            "message": f"系统检测到您的 Word 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n如果确认无误，请点击“确定”继续提交。"
-                        }), 400
+                    try:
+                        content = file.stream.read()
+                        text_content = content.decode('utf-16-le', errors='ignore')
+                        file.stream.seek(0) 
+                        
+                        clean_text = re.sub(r'\s+', '', text_content)
+                        
+                        if assignment.check_keyword not in clean_text:
+                            return jsonify({
+                                "success": False, 
+                                "warning": True, 
+                                "message": f"系统在您的 .doc 文件中没有找到【{assignment.check_keyword}】。\n\n(注：.doc 为老格式，如果确认没传错，请点击“确定”继续提交)"
+                            }), 400
+
+                    except Exception:
+                        file.stream.seek(0)
 
             safe_title = assignment.title
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
@@ -988,6 +1017,7 @@ def student_delete(assignment_id):
         if os.path.exists(filepath): os.remove(filepath)
         db.session.delete(sub)
         db.session.commit()
+        log_action(current_user.username, f"撤回了作业(ID:{assignment_id})", request)
         flash('提交已撤回，你可以重新上传了。', 'success')
     return redirect(url_for('student'))
 
@@ -1095,6 +1125,7 @@ def download_zip(assignment_id):
     
     return send_file(memory_file, download_name=f"{safe_class}_{safe_title}_打包.zip", as_attachment=True)
 
+# ================= 自动建表与迁移 =================
 with app.app_context():
     db.create_all()
     
@@ -1107,45 +1138,41 @@ with app.app_context():
         user_columns = [col[1] for col in cursor.fetchall()]
         if 'class_name' not in user_columns:
             cursor.execute("ALTER TABLE user ADD COLUMN class_name VARCHAR(50) DEFAULT '默认班级'")
-            conn.commit()
+        if 'email' not in user_columns:
+            cursor.execute("ALTER TABLE user ADD COLUMN email VARCHAR(100)")
+        if 'known_fingerprints' not in user_columns:
+            cursor.execute("ALTER TABLE user ADD COLUMN known_fingerprints VARCHAR(255)")
+        conn.commit()
             
         cursor.execute("PRAGMA table_info(assignment)")
         assign_columns = [col[1] for col in cursor.fetchall()]
         if 'class_name' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN class_name VARCHAR(50) DEFAULT '全部班级'")
-            conn.commit()
         if 'is_forced_closed' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN is_forced_closed BOOLEAN DEFAULT 0")
-            conn.commit()
         if 'is_archived' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN is_archived BOOLEAN DEFAULT 0")
-            conn.commit()
         if 'publish_time' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN publish_time DATETIME")
             cursor.execute("UPDATE assignment SET publish_time = CURRENT_TIMESTAMP WHERE publish_time IS NULL")
-            conn.commit()
         if 'check_keyword' not in assign_columns:
             cursor.execute("ALTER TABLE assignment ADD COLUMN check_keyword VARCHAR(50)")
-            conn.commit()
-        if 'exclude_keyword' not in assign_columns:
-            cursor.execute("ALTER TABLE assignment ADD COLUMN exclude_keyword VARCHAR(255)")
-            conn.commit()
+        conn.commit()
 
         cursor.execute("PRAGMA table_info(submission)")
         sub_columns = [col[1] for col in cursor.fetchall()]
         if 'is_cleared' not in sub_columns:
             cursor.execute("ALTER TABLE submission ADD COLUMN is_cleared BOOLEAN DEFAULT 0")
-            conn.commit()
+        conn.commit()
 
         cursor.execute("PRAGMA table_info(system_config)")
         sys_columns = [col[1] for col in cursor.fetchall()]
         if sys_columns: 
             if 'start_time' not in sys_columns:
                 cursor.execute("ALTER TABLE system_config ADD COLUMN start_time DATETIME")
-                conn.commit()
             if 'end_time' not in sys_columns:
                 cursor.execute("ALTER TABLE system_config ADD COLUMN end_time DATETIME")
-                conn.commit()
+        conn.commit()
             
         conn.close()
 
