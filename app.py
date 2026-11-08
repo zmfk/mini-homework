@@ -70,8 +70,8 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(50), nullable=False)
     class_name = db.Column(db.String(50), default='默认班级')
-    email = db.Column(db.String(100), nullable=True) # 邮箱/QQ
-    known_fingerprints = db.Column(db.String(255), nullable=True) # 设备指纹记录
+    email = db.Column(db.String(100), nullable=True)
+    known_fingerprints = db.Column(db.String(255), nullable=True)
 
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -83,7 +83,7 @@ class Assignment(db.Model):
     is_archived = db.Column(db.Boolean, default=False)
     last_download_count = db.Column(db.Integer, default=0)
     class_name = db.Column(db.String(50), default='全部班级')
-    check_keyword = db.Column(db.String(50), nullable=True) # 防伪词
+    check_keyword = db.Column(db.String(50), nullable=True)
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -92,7 +92,7 @@ class Submission(db.Model):
     student_name = db.Column(db.String(50), nullable=False)
     file_name = db.Column(db.String(150), nullable=False)
     submit_time = db.Column(db.DateTime, server_default=db.func.now())
-    is_cleared = db.Column(db.Boolean, default=False) # 是否被管理员清理
+    is_cleared = db.Column(db.Boolean, default=False) 
 
 class SystemConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -247,13 +247,12 @@ def api_send_email_code():
     if not is_known and user.known_fingerprints:
         warning_text = "\n\n⚠️【安全警告】系统检测到此次请求来自一台您从未使用过的新设备！如果这不是您本人的操作，请忽略此邮件，并立即联系管理员！"
 
-    mail_host = os.environ.get('MAIL_SERVER', 'smtp.qq.com')
-    mail_port = int(os.environ.get('MAIL_PORT', 465))
-    mail_user = os.environ.get('MAIL_USERNAME', '')
-    mail_pass = os.environ.get('MAIL_PASSWORD', '')
+    # ===== 发信逻辑 =====
+    mail_user = os.environ.get('GMAIL_USER')
+    mail_pass = os.environ.get('GMAIL_PASS')
 
     if not mail_user or not mail_pass:
-        return jsonify({"success": False, "message": "管理员未配置邮箱服务，无法发送验证码。"})
+        return jsonify({"success": False, "message": "管理员未配置发信邮箱，无法发送验证码。"})
 
     try:
         message = MIMEText(f"您好，{user.name}：\n\n您正在申请重置作业系统的密码。您的验证码是：{code}\n\n验证码5分钟内有效。如非本人操作，请忽略本邮件。{warning_text}", 'plain', 'utf-8')
@@ -261,12 +260,14 @@ def api_send_email_code():
         message['To'] = Header(user.email)
         message['Subject'] = Header("【作业系统】密码重置验证码")
 
-        smtpObj = smtplib.SMTP_SSL(mail_host, mail_port)
+        smtpObj = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10)
         smtpObj.login(mail_user, mail_pass)
         smtpObj.sendmail(mail_user, [user.email], message.as_string())
         smtpObj.quit()
         
-        return jsonify({"success": True, "message": f"验证码已发送至您的邮箱：{user.email[:3]}***{user.email[-4:]}"})
+        return jsonify({"success": True, "message": f"验证码已发送至您的邮箱：{user.email[:3]}***{user.email[-4:]}\n\n(如果没收到，请留意垃圾箱)"})
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({"success": False, "message": "邮箱认证失败，请检查管理员配置的应用专用密码是否正确。"})
     except Exception as e:
         return jsonify({"success": False, "message": f"邮件发送失败，请稍后再试。错误信息：{str(e)}"})
 
@@ -463,7 +464,7 @@ def admin():
         db.session.commit()
         
         if invalid_count > 0:
-            flash(f'成功处理 {count} 名新用户！另有 {invalid_count} 行因格式错误（学号非纯数字）被自动跳过。', 'success')
+            flash(f'成功处理 {count} 名新用户！另有 {invalid_count} 行因格式错误被跳过。', 'success')
         else:
             flash(f'成功处理 {count} 名新用户！', 'success')
 
@@ -547,7 +548,6 @@ def admin():
                            sys_config=sys_config,
                            action_logs=action_logs)
 
-# ================= 路由：通用管理操作 =================
 @app.route('/admin/export_summary')
 @login_required
 def export_summary():
@@ -829,7 +829,6 @@ def delete_submission(submission_id):
 @app.route('/teacher')
 @login_required
 def teacher():
-    # (教师端逻辑与管理员高度重合，直接展示看板)
     if current_user.role != 'teacher': return "无权限访问", 403
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
@@ -1125,7 +1124,6 @@ def download_zip(assignment_id):
     
     return send_file(memory_file, download_name=f"{safe_class}_{safe_title}_打包.zip", as_attachment=True)
 
-# ================= 自动建表与迁移 =================
 with app.app_context():
     db.create_all()
     
