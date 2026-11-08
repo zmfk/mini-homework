@@ -69,9 +69,6 @@
                         <h3 class="text-lg font-bold text-gray-900 flex flex-wrap items-center gap-2">
                             {{ a.title }}
                             <span class="px-1.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded">{{ a.class_name }}</span>
-                            {% if a.materials %}
-                            <span class="px-1.5 py-0.5 text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-200 rounded">已传材料</span>
-                            {% endif %}
                             
                             {% if a.is_active %}
                                 <span class="px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded border border-green-200 whitespace-nowrap">强制开放中</span>
@@ -87,6 +84,20 @@
                                 <span class="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded">⚠️ 有新文件未备份</span>
                             {% endif %}
                         </h3>
+                        
+                        <!-- 材料展示与删除区域 -->
+                        {% if a.materials %}
+                        <div class="flex flex-wrap gap-1.5 mt-2 bg-purple-50/50 p-1.5 rounded border border-purple-100 w-fit">
+                            <span class="text-[10px] text-purple-700 font-bold py-0.5">已传材料:</span>
+                            {% for mat in a.materials.split(',') %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 bg-white border border-purple-200 rounded text-[10px] text-gray-700 font-medium">
+                                {{ mat.split('_', 2)[-1] if mat.startswith('mat_') else mat }}
+                                <a href="/admin/delete_material/{{ a.id }}/{{ mat }}" onclick="return confirm('确定删除该文件吗？')" class="ml-1 text-gray-400 hover:text-red-600 font-bold" title="删除该文件">&times;</a>
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
                         <p class="text-sm text-gray-500 mt-2 flex flex-wrap items-center">
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             截止时间：{{ a.deadline.strftime('%Y-%m-%d %H:%M') }} 

@@ -443,6 +443,26 @@ def upload_materials(assignment_id):
     flash('材料补传成功！', 'success')
     return redirect(request.referrer or url_for('admin'))
 
+# ====== 新增：删除指定材料的专用路由 ======
+@app.route('/admin/delete_material/<int:assignment_id>/<path:filename>')
+@login_required
+def delete_material(assignment_id, filename):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    if a and a.materials:
+        mats = a.materials.split(',')
+        if filename in mats:
+            mats.remove(filename)
+            a.materials = ",".join(mats) if mats else None
+            db.session.commit()
+            
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                
+            flash('材料已成功删除', 'success')
+    return redirect(request.referrer or url_for('admin'))
+
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -941,7 +961,6 @@ def delete_submission(submission_id):
 def teacher():
     if current_user.role != 'teacher': return "无权限访问", 403
     
-    # ====== 新增：处理老师发布作业的 POST 请求 ======
     all_users = User.query.all()
     valid_classes = sorted(list(set([u.class_name for u in all_users if u.role in ['student', 'admin'] and u.username != 'admin' and u.class_name])))
 
@@ -996,7 +1015,6 @@ def teacher():
             flash('作业创建成功！', 'success')
             return redirect(url_for('teacher'))
 
-    # ====== 渲染数据 ======
     assignments = Assignment.query.order_by(Assignment.id.desc()).all()
     submissions = Submission.query.all()
     

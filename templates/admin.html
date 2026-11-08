@@ -250,11 +250,6 @@
                                         已开启必含词校验
                                     </span>
                                     {% endif %}
-                                    {% if a.materials %}
-                                    <span class="px-1.5 py-0.5 text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-200 rounded">
-                                        已传材料
-                                    </span>
-                                    {% endif %}
                                     {% if a.is_archived %}
                                     <span class="px-1.5 py-0.5 text-[10px] font-bold bg-gray-200 text-gray-600 border border-gray-300 rounded">已归档</span>
                                     {% endif %}
@@ -272,6 +267,19 @@
                                 </div>
                             </div>
                             
+                            <!-- 材料展示与删除区域 -->
+                            {% if a.materials %}
+                            <div class="flex flex-wrap gap-1.5 mt-1 bg-purple-50/50 p-1.5 rounded border border-purple-100 w-fit">
+                                <span class="text-[10px] text-purple-700 font-bold py-0.5">已传材料:</span>
+                                {% for mat in a.materials.split(',') %}
+                                <span class="inline-flex items-center px-1.5 py-0.5 bg-white border border-purple-200 rounded text-[10px] text-gray-700 font-medium">
+                                    {{ mat.split('_', 2)[-1] if mat.startswith('mat_') else mat }}
+                                    <a href="/admin/delete_material/{{ a.id }}/{{ mat }}" onclick="return confirm('确定删除该文件吗？')" class="ml-1 text-gray-400 hover:text-red-600 font-bold" title="删除该文件">&times;</a>
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
                             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                                 <span class="flex items-center text-gray-400">
                                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
