@@ -6,8 +6,8 @@ import sqlite3
 import re
 import random
 import smtplib
-import threading  # 新增：用于后台异步发信
-import time       # 新增：用于记录冷却时间
+import threading  # 用于后台异步发信
+import time       # 用于记录冷却时间
 from email.mime.text import MIMEText
 from email.header import Header
 from datetime import datetime, timedelta
@@ -64,19 +64,25 @@ def get_folder_size(folder_path):
                     pass
     return round(total_size / (1024 * 1024), 2)
 
+# ==========================================
+# 核心增强：通用的 Word 文本提取器
+# ==========================================
 def extract_text_from_word(file_bytes):
     text_content = ""
     has_macro = False
+    
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
             if 'word/vbaProject.bin' in zf.namelist():
                 has_macro = True
+            
             if 'word/document.xml' in zf.namelist():
                 xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
                 text_content = re.sub(r'<[^>]+>', ' ', xml_content)
                 return text_content, has_macro
     except Exception:
-        pass
+        pass 
+        
     try:
         text_utf16 = file_bytes.decode('utf-16-le', errors='ignore')
         text_utf8 = file_bytes.decode('utf-8', errors='ignore')
@@ -84,7 +90,9 @@ def extract_text_from_word(file_bytes):
         text_content = text_utf16 + " " + text_utf8 + " " + text_gbk
     except Exception:
         pass
+        
     return text_content, has_macro
+# ==========================================
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -108,7 +116,7 @@ class Assignment(db.Model):
     class_name = db.Column(db.String(50), default='全部班级')
     check_keyword = db.Column(db.String(50), nullable=True)
     materials = db.Column(db.Text, nullable=True) 
-    reminder_sent = db.Column(db.Boolean, default=False) # 新增：邮件提醒标记
+    reminder_sent = db.Column(db.Boolean, default=False) # 邮件提醒标记
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -153,9 +161,9 @@ def inject_sys_config():
     return dict(sys_config=SystemConfig.query.first())
 
 # ==========================================
-# 核心：邮件发信逻辑与懒加载触发
+# 核心：邮件发信逻辑与懒加载触发（按学生聚合版）
 # ==========================================
-def send_reminder_email(to_email, student_name, assignment):
+def send_aggregated_reminder_email(to_email, student_name, assignments):
     mail_user = os.environ.get('GMAIL_USER')
     mail_pass = os.environ.get('GMAIL_PASS')
     if not mail_user or not mail_pass:
@@ -163,8 +171,14 @@ def send_reminder_email(to_email, student_name, assignment):
         return
 
     try:
-        subject = f"【作业提醒】《{assignment.title}》即将截止"
-        body = f"您好，{student_name}：\n\n系统提醒您，作业《{assignment.title}》即将于 {assignment.deadline.strftime('%Y-%m-%d %H:%M')} 截止。\n\n请您抓紧时间登录系统完成提交。\n\n祝您学习顺利！"
+        # 拼接该学生所有即将截止的作业列表
+        task_list_str = ""
+        for i, a in enumerate(assignments, 1):
+            task_list_str += f"{i}. 《{a.title}》，截止时间：{a.deadline.strftime('%Y-%m-%d %H:%M')}\n"
+            
+        subject = f"【作业提醒】您有 {len(assignments)} 项作业即将截止"
+        body = f"您好，{student_name}：\n\n系统提醒您，以下作业即将截止，您目前尚未提交：\n\n{task_list_str}\n请您抓紧时间登录系统完成提交。\n\n祝您学习顺利！"
+        
         message = MIMEText(body, 'plain', 'utf-8')
         message['From'] = Header(f"作业提交系统 <{mail_user}>")
         message['To'] = Header(to_email)
@@ -174,7 +188,7 @@ def send_reminder_email(to_email, student_name, assignment):
         smtpObj.login(mail_user, mail_pass)
         smtpObj.sendmail(mail_user, [to_email], message.as_string())
         smtpObj.quit()
-        print(f"[{get_bj_time()}] 成功发送提醒给 {student_name} ({to_email})")
+        print(f"[{get_bj_time()}] 成功发送汇总提醒给 {student_name} ({to_email})，共 {len(assignments)} 项作业")
     except Exception as e:
         print(f"[{get_bj_time()}] 发送提醒邮件给 {to_email} 失败: {e}")
 
@@ -190,14 +204,21 @@ def check_and_send_reminders():
                 Assignment.deadline > now,
                 Assignment.reminder_sent == False,
                 Assignment.is_forced_closed == False,
-                Assignment.is_active == False
+                Assignment.is_active == False,
+                Assignment.is_archived == False
             ).all()
 
             if not assignments:
                 return
 
+            # 查出所有学生，减少数据库查询次数
+            all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
+            
+            # 核心字典：用于汇总每个学生需要被提醒的作业 { 学号: {'user': UserObj, 'assignments': [作业列表]} }
+            student_tasks = {}
+
             for a in assignments:
-                # 数据库原子锁：防止多个并发请求重复发信
+                # 数据库原子锁：防止并发重复处理
                 result = db.session.execute(
                     db.text("UPDATE assignment SET reminder_sent = 1 WHERE id = :id AND reminder_sent = 0"),
                     {"id": a.id}
@@ -205,7 +226,7 @@ def check_and_send_reminders():
                 db.session.commit()
                 
                 if result.rowcount > 0:
-                    all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
+                    # 匹配目标班级的学生
                     if a.class_name == '全部班级':
                         target_students = all_students
                     else:
@@ -213,10 +234,22 @@ def check_and_send_reminders():
                         
                     subs = Submission.query.filter_by(assignment_id=a.id).all()
                     sub_ids = [s.student_id for s in subs]
+                    
+                    # 筛选出未交且有邮箱的
                     not_submitted = [u for u in target_students if u.username not in sub_ids and u.email]
                     
+                    # 把该作业塞进对应学生的任务字典里
                     for stu in not_submitted:
-                        send_reminder_email(stu.email, stu.name, a)
+                        if stu.username not in student_tasks:
+                            student_tasks[stu.username] = {'user': stu, 'assignments': []}
+                        student_tasks[stu.username]['assignments'].append(a)
+
+            # 遍历汇总字典，给每个学生发一封包含多份作业的提醒邮件
+            for username, data in student_tasks.items():
+                stu = data['user']
+                pending_assigns = data['assignments']
+                send_aggregated_reminder_email(stu.email, stu.name, pending_assigns)
+                
         except Exception as e:
             print(f"自动检查任务出错: {e}")
 
@@ -229,7 +262,7 @@ def lazy_check_reminders():
         return
         
     current_time = time.time()
-    # 15分钟冷却时间，防止频繁检查消耗资源
+    # 15分钟冷却时间
     if current_time - _last_reminder_check < 900:
         return
         
@@ -965,7 +998,7 @@ def update_deadline(assignment_id):
 
             a.deadline = new_time
             a.is_forced_closed = False 
-            a.reminder_sent = False # 重置发送状态，下次触发会重新发
+            a.reminder_sent = False # 重置发送状态
             db.session.commit()
             flash(f'作业 [{a.title}] 截止时间已更新', 'success')
         except Exception:
@@ -1407,4 +1440,4 @@ with app.app_context():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
