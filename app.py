@@ -62,7 +62,41 @@ def get_folder_size(folder_path):
                     pass
     return round(total_size / (1024 * 1024), 2)
 
-# ================= 数据模型 =================
+# ==========================================
+# 核心增强：通用的 Word 文本提取器
+# 无论真 docx、假 docx、老 doc，都会尽全力挖出文本
+# ==========================================
+def extract_text_from_word(file_bytes):
+    text_content = ""
+    has_macro = False
+    
+    # 尝试1：当做 docx (ZIP) 解析
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            if 'word/vbaProject.bin' in zf.namelist():
+                has_macro = True
+            
+            if 'word/document.xml' in zf.namelist():
+                xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
+                # 将各种标签替换为空格，防止单词粘连
+                text_content = re.sub(r'<[^>]+>', ' ', xml_content)
+                return text_content, has_macro
+    except Exception:
+        pass # 不是 zip 格式，说明大概率是老版 doc，或者文件损坏
+        
+    # 尝试2：当做 doc (二进制流) 暴力提取
+    try:
+        text_utf16 = file_bytes.decode('utf-16-le', errors='ignore')
+        text_utf8 = file_bytes.decode('utf-8', errors='ignore')
+        text_gbk = file_bytes.decode('gbk', errors='ignore')
+        # 三种方式暴力解码后拼接，宁可多抓不能漏抓
+        text_content = text_utf16 + " " + text_utf8 + " " + text_gbk
+    except Exception:
+        pass
+        
+    return text_content, has_macro
+# ==========================================
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -129,18 +163,40 @@ def inject_sys_config():
 
 @app.before_request
 def check_maintenance():
-    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'api_send_email_code', 'api_verify_email_code']
+    # 维护期间仅允许：静态资源、登录页、退出、维护页
+    # 注意：不再放行 change_password、api_send_email_code、api_verify_email_code
+    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page']
     if request.endpoint in allowed_endpoints:
         return
 
+    # 管理员和教师不受维护限制
     if current_user.is_authenticated and current_user.role in ['admin', 'teacher']:
         return
 
     try:
         config = SystemConfig.query.first()
         if config and config.is_maintenance:
+            # 1. 维护期间禁止修改密码：友好重定向
+            if request.endpoint == 'change_password':
+                flash('系统维护中，暂时无法修改密码。', 'error')
+                return redirect(url_for('maintenance_page'))
+
+            # 2. 维护期间禁止通过邮箱验证码重置密码
+            #    这两个接口是 JSON 接口，返回 JSON 让前端提示
+            if request.endpoint in ['api_send_email_code', 'api_verify_email_code']:
+                return jsonify({
+                    "success": False,
+                    "message": "系统维护中，暂时无法重置密码，请稍后再试。"
+                }), 503
+
+            # 3. 其他 POST 或 API 请求统一拦截
             if request.method == 'POST' or request.path.startswith('/api/'):
-                return jsonify({"error": "maintenance", "message": config.message}), 503
+                return jsonify({
+                    "error": "maintenance",
+                    "message": config.message
+                }), 503
+
+            # 4. 普通 GET 页面跳转到维护页
             return redirect(url_for('maintenance_page'))
     except Exception:
         pass 
@@ -190,7 +246,6 @@ def get_pa_stats():
         'api_connected': bool(token and username)
     }
 
-# ================= 路由：认证与密码 =================
 @app.route('/')
 def index():
     if not current_user.is_authenticated:
@@ -204,7 +259,6 @@ def login():
         if user and check_password_hash(user.password_hash, request.form.get('password')):
             login_user(user)
             
-            # 记录设备指纹
             fp = request.form.get('device_fingerprint', 'unknown')
             if fp != 'unknown':
                 fps = user.known_fingerprints.split(',') if user.known_fingerprints else []
@@ -247,7 +301,6 @@ def api_send_email_code():
     if not is_known and user.known_fingerprints:
         warning_text = "\n\n⚠️【安全警告】系统检测到此次请求来自一台您从未使用过的新设备！如果这不是您本人的操作，请忽略此邮件，并立即联系管理员！"
 
-    # ===== 发信逻辑 =====
     mail_user = os.environ.get('GMAIL_USER')
     mail_pass = os.environ.get('GMAIL_PASS')
 
@@ -344,7 +397,6 @@ def change_password():
     contact_email = os.environ.get('CONTACT_EMAIL', '')
     return render_template('change_password.html', contact_email=contact_email)
 
-# ================= 路由：管理员/教师 =================
 @app.route('/api/submission_count')
 @login_required
 def submission_count():
@@ -813,6 +865,21 @@ def update_class(assignment_id):
         flash(f'作业 [{a.title}] 目标班级已修改为: {new_class}', 'success')
     return redirect(url_for('admin'))
 
+@app.route('/admin/update_keyword/<int:assignment_id>', methods=['POST'])
+@login_required
+def update_keyword(assignment_id):
+    if current_user.role not in ['admin', 'teacher']: return "无权限访问", 403
+    a = Assignment.query.get(assignment_id)
+    new_keyword = request.form.get('new_keyword', '').strip()
+    if a:
+        a.check_keyword = new_keyword[:50] if new_keyword else None
+        db.session.commit()
+        if a.check_keyword:
+            flash(f'作业 [{a.title}] 的必含词已更新为: {a.check_keyword}', 'success')
+        else:
+            flash(f'作业 [{a.title}] 的必含词已清除（不再校验）', 'success')
+    return redirect(url_for('admin'))
+
 @app.route('/admin/delete_submission/<int:submission_id>')
 @login_required
 def delete_submission(submission_id):
@@ -865,7 +932,6 @@ def teacher():
     current_total_subs = Submission.query.count()
     return render_template('teacher.html', assignments=assignments, report=report, now=now_bj, current_total_subs=current_total_subs, all_classes=all_classes)
 
-# ================= 路由：学生端 =================
 @app.route('/student', methods=['GET', 'POST'])
 @login_required
 def student():
@@ -889,48 +955,25 @@ def student():
         if file and file.filename.lower().endswith(('.pdf', '.doc', '.docx')):
             ext = os.path.splitext(file.filename)[1].lower()
             
-            if ext == '.docx':
-                try:
-                    with zipfile.ZipFile(file.stream) as zf:
-                        if 'word/vbaProject.bin' in zf.namelist():
-                            return jsonify({"success": False, "message": "检测到文件包含恶意宏，已被拒绝提交！"}), 400
-                        
-                        if assignment.check_keyword and not force_submit:
-                            if 'word/document.xml' in zf.namelist():
-                                xml_content = zf.read('word/document.xml').decode('utf-8', errors='ignore')
-                                text_content = re.sub(r'<[^>]+>', '', xml_content)
-                                clean_text = re.sub(r'\s+', '', text_content)
-                                
-                                if assignment.check_keyword not in clean_text:
-                                    return jsonify({
-                                        "success": False, 
-                                        "warning": True, 
-                                        "message": f"系统检测到您的 .docx 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n如果确认无误，请点击“确定”继续提交。"
-                                    }), 400
-
-                except Exception:
-                    return jsonify({"success": False, "message": "文件损坏或格式不正确！"}), 400
-                finally:
-                    file.stream.seek(0) 
-
-            elif ext == '.doc':
+            if ext in ['.doc', '.docx']:
+                # 使用通用解析器
+                file_bytes = file.read()
+                file.stream.seek(0)
+                
+                text_content, has_macro = extract_text_from_word(file_bytes)
+                
+                if has_macro:
+                    return jsonify({"success": False, "message": "安全拦截：检测到文件包含恶意宏，已被拒绝提交！"}), 400
+                
                 if assignment.check_keyword and not force_submit:
-                    try:
-                        content = file.stream.read()
-                        text_content = content.decode('utf-16-le', errors='ignore')
-                        file.stream.seek(0) 
-                        
-                        clean_text = re.sub(r'\s+', '', text_content)
-                        
-                        if assignment.check_keyword not in clean_text:
-                            return jsonify({
-                                "success": False, 
-                                "warning": True, 
-                                "message": f"系统在您的 .doc 文件中没有找到【{assignment.check_keyword}】。\n\n(注：.doc 为老格式，如果确认没传错，请点击“确定”继续提交)"
-                            }), 400
-
-                    except Exception:
-                        file.stream.seek(0)
+                    # 去除所有空白字符，提高匹配成功率
+                    clean_text = re.sub(r'\s+', '', text_content)
+                    if assignment.check_keyword not in clean_text:
+                        return jsonify({
+                            "success": False, 
+                            "warning": True, 
+                            "message": f"系统检测到您的 Word 文件中似乎没有包含【{assignment.check_keyword}】。\n\n可能传错了文件。\n\n如果确认无误，请点击“确定”继续提交。"
+                        }), 400
 
             safe_title = assignment.title
             for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r']:
