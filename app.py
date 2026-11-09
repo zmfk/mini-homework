@@ -6,9 +6,9 @@ import sqlite3
 import re
 import random
 import smtplib
-import threading  # 用于后台异步发信
-import time       # 用于记录冷却时间
-import tempfile   # 用于临时文件
+import threading
+import time
+import tempfile
 from email.mime.text import MIMEText
 from email.header import Header
 from datetime import datetime, timedelta
@@ -160,7 +160,7 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ==========================================
-# 修复：真实 IP 与稳定 UA 获取逻辑
+# 修复：真实 IP 与极限容错 UA 获取逻辑
 # ==========================================
 def log_action(student_id, action, req_obj=None):
     try:
@@ -175,8 +175,13 @@ def log_action(student_id, action, req_obj=None):
             else:
                 ip = req_obj.remote_addr or 'unknown'
                 
-            # 2. 回退到 user_agent.string，防止代理洗掉 Header
-            ua = req_obj.user_agent.string[:250] if req_obj.user_agent else 'unknown'
+            # 2. 极限抓取 UA
+            raw_ua = req_obj.headers.get('User-Agent')
+            if not raw_ua:
+                raw_ua = str(req_obj.user_agent)
+                
+            if raw_ua and raw_ua != 'None':
+                ua = raw_ua[:250]
 
         log = ActionLog(student_id=student_id, action=action, ip_address=ip, user_agent=ua)
         db.session.add(log)

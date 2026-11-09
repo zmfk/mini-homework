@@ -616,27 +616,46 @@
 
         toggleArchiveView(false);
 
+        // 修复：极限容错 UA 解析
         document.querySelectorAll('.device-info').forEach(el => {
             const ua = el.getAttribute('data-ua') || '';
-            let device = "未知设备", os = "未知系统", browser = "未知浏览器";
-            if (ua.includes("iPhone")) { device = "iPhone"; os = "iOS"; }
-            else if (ua.includes("iPad")) { device = "iPad"; os = "iOS"; }
-            else if (ua.includes("Android")) { 
-                device = "安卓手机/平板"; os = "Android"; 
-                let match = ua.match(/Android\s+[^;]+;\s+([^;]+)\s+Build/);
-                if(match && match[1]) device = match[1]; 
+            
+            if (!ua || ua === 'unknown' || ua === 'None' || ua.trim() === '') {
+                el.innerHTML = `📱 未知设备 (浏览器隐藏了特征)`;
+                return;
             }
-            else if (ua.includes("Windows NT 10.0")) { device = "电脑"; os = "Windows 10/11"; }
-            else if (ua.includes("Windows NT")) { device = "电脑"; os = "Windows"; }
-            else if (ua.includes("Macintosh")) { device = "电脑"; os = "Mac OS"; }
+
+            let device = "未知设备";
+            let os = "未知系统";
+            let browser = "未知浏览器";
+            let icon = "💻";
+
+            if (ua.includes("iPhone")) { device = "iPhone"; os = "iOS"; icon = "📱"; }
+            else if (ua.includes("iPad")) { device = "iPad"; os = "iOS"; icon = "📱"; }
+            else if (ua.includes("Android")) { device = "安卓设备"; os = "Android"; icon = "📱"; }
+            else if (ua.includes("Windows")) { device = "电脑"; os = "Windows"; }
+            else if (ua.includes("Macintosh") || ua.includes("Mac OS")) { device = "电脑"; os = "Mac OS"; }
             else if (ua.includes("Linux")) { device = "电脑"; os = "Linux"; }
 
-            if (ua.includes("Edg/")) browser = "Edge";
+            if (ua.includes("MicroMessenger")) browser = "微信";
+            else if (ua.includes("Edg/") || ua.includes("EdgA/") || ua.includes("EdgiOS/")) browser = "Edge";
             else if (ua.includes("Chrome/")) browser = "Chrome";
             else if (ua.includes("Safari/")) browser = "Safari";
             else if (ua.includes("Firefox/")) browser = "Firefox";
+            else if (ua.includes("MQQBrowser")) browser = "QQ浏览器";
+            else if (ua.includes("UCBrowser")) browser = "UC浏览器";
+            
+            // 终极兜底
+            if (browser === "未知浏览器") {
+                let match = ua.match(/\(([^)]+)\)/);
+                if (match && match[1]) {
+                    browser = match[1].split(';')[0].trim();
+                } else {
+                    browser = ua.substring(0, 15) + "...";
+                }
+            }
 
-            el.innerHTML = `📱 ${device} | ${os} | ${browser}`;
+            el.innerHTML = `${icon} ${device} | ${os} | ${browser}`;
         });
     });
 
