@@ -71,7 +71,6 @@
                         </div>
                         <div>
                             <label class="block text-[11px] text-gray-500 mb-1">结束时间</label>
-                            <!-- 新增了 id="maintenance-end-time" -->
                             <input type="datetime-local" name="end_time" id="maintenance-end-time" value="{{ sys_config.end_time.strftime('%Y-%m-%dT%H:%M') if sys_config.end_time else '' }}" required
                                    class="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white">
                         </div>
@@ -413,7 +412,6 @@
                                     <div class="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold mr-1.5 flex-shrink-0">{{ stu.name[0] }}</div>
                                     <span class="text-gray-800 text-xs break-all" title="{{ stu.username }} - {{ stu.name }}">{{ stu.username }} - {{ stu.name }}</span>
                                     
-                                    <!-- 核心修改：增加邮箱判断 -->
                                     {% if a.reminder_sent and stu.email %}
                                     <span class="ml-2 px-1.5 py-0.5 text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-200 rounded whitespace-nowrap">已提醒</span>
                                     {% elif a.reminder_sent and not stu.email %}
@@ -608,6 +606,28 @@
             
             maintenanceEndInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
         }
+
+        // ==========================================
+        // 【核心新增】：监听开始时间的变化，实时联动结束时间
+        // ==========================================
+        if (maintenanceStartInput && maintenanceEndInput) {
+            maintenanceStartInput.addEventListener('change', function() {
+                if (!this.value) return;
+                
+                let startDate = new Date(this.value);
+                // 增加 30 分钟
+                startDate.setMinutes(startDate.getMinutes() + 30);
+                
+                const year = startDate.getFullYear();
+                const month = String(startDate.getMonth() + 1).padStart(2, '0');
+                const day = String(startDate.getDate()).padStart(2, '0');
+                const hours = String(startDate.getHours()).padStart(2, '0');
+                const minutes = String(startDate.getMinutes()).padStart(2, '0');
+                
+                maintenanceEndInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+            });
+        }
+        // ==========================================
 
         const dataContainer = document.getElementById('data-container');
         let currentTotalSubs = parseInt(dataContainer.getAttribute('data-total-subs')) || 0;
