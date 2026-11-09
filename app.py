@@ -394,9 +394,6 @@ def login():
                     user.known_fingerprints = ','.join(fps[:3])
                     db.session.commit()
             
-            # ==========================================
-            # 防刷屏加强版：60秒内重复登录不再记录日志
-            # ==========================================
             recent_log = ActionLog.query.filter(
                 ActionLog.student_id.like(f"{user.username}%"),
                 ActionLog.action == "登录了系统",
@@ -405,7 +402,6 @@ def login():
             
             if not recent_log:
                 log_action(user.username, "登录了系统", request)
-            # ==========================================
             
             return redirect(url_for('index'))
         flash('学号或密码错误', 'error')
@@ -1237,7 +1233,6 @@ def student():
             db.session.add(Submission(assignment_id=assignment_id, student_id=current_user.username, student_name=current_user.name, file_name=filename, is_cleared=False))
             db.session.commit()
             
-            # 记录学生提交作业日志，带作业名
             log_action(current_user.username, f"提交了《{assignment.title}》 (ID:{assignment_id})", request)
             
             return jsonify({"success": True, "message": "作业提交成功！"})
@@ -1302,7 +1297,6 @@ def student_delete(assignment_id):
     if current_user.role not in ['student', 'admin']: return "无权限访问", 403
     sub = Submission.query.filter_by(assignment_id=assignment_id, student_id=current_user.username).first()
     if sub:
-        # 获取作业名
         assignment = Assignment.query.get(assignment_id)
         title = assignment.title if assignment else "未知作业"
         
@@ -1311,7 +1305,6 @@ def student_delete(assignment_id):
         db.session.delete(sub)
         db.session.commit()
         
-        # 记录撤回日志，带作业名
         log_action(current_user.username, f"撤回了《{title}》 (ID:{assignment_id})", request)
         
         flash('提交已撤回，你可以重新上传了。', 'success')
@@ -1336,7 +1329,7 @@ def download_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
 # ==========================================
-# 优化：极速打包下载逻辑
+# 优化：带有压缩的打包下载逻辑
 # ==========================================
 @app.route('/download_zip/<int:assignment_id>')
 @login_required
@@ -1357,7 +1350,8 @@ def download_zip(assignment_id):
     temp_zip.close()
 
     try:
-        with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_STORED) as zf:
+        # 【核心修改】：把 ZIP_STORED 改回了 ZIP_DEFLATED，恢复压缩
+        with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
             student_class_map = {u.username: u.class_name for u in all_students}
             
