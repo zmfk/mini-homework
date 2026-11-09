@@ -8,10 +8,11 @@ import random
 import smtplib
 import threading  # 用于后台异步发信
 import time       # 用于记录冷却时间
+import tempfile   # 用于临时文件
 from email.mime.text import MIMEText
 from email.header import Header
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, send_file, jsonify, session, after_this_request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -58,7 +59,6 @@ def request_entity_too_large(error):
 
 @app.errorhandler(500)
 def internal_server_error(error):
-    # 这里按照要求，将“联系老师”改为了“联系管理员”
     return jsonify({"success": False, "message": "服务器处理文件时开小差了（可能文件损坏），请稍后再试或联系管理员。"}), 500
 # ==========================================
 
@@ -159,15 +159,29 @@ class ActionLog(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# ==========================================
+# 修复：真实 IP 获取逻辑
+# ==========================================
 def log_action(student_id, action, req_obj=None):
     try:
-        ip = req_obj.remote_addr if req_obj else 'unknown'
-        ua = req_obj.user_agent.string[:250] if req_obj else 'unknown'
+        ip = 'unknown'
+        ua = 'unknown'
+        
+        if req_obj:
+            x_forwarded_for = req_obj.headers.get('X-Forwarded-For')
+            if x_forwarded_for:
+                ip = x_forwarded_for.split(',')[0].strip()
+            else:
+                ip = req_obj.remote_addr or 'unknown'
+                
+            ua = req_obj.user_agent.string[:250] if req_obj.user_agent else 'unknown'
+
         log = ActionLog(student_id=student_id, action=action, ip_address=ip, user_agent=ua)
         db.session.add(log)
         db.session.commit()
     except Exception as e:
         print("记录日志失败", e)
+# ==========================================
 
 @app.context_processor
 def inject_sys_config():
@@ -1288,6 +1302,9 @@ def download_file(filename):
 
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
+# ==========================================
+# 优化：极速打包下载逻辑
+# ==========================================
 @app.route('/download_zip/<int:assignment_id>')
 @login_required
 def download_zip(assignment_id):
@@ -1302,50 +1319,24 @@ def download_zip(assignment_id):
     assignment.last_download_count = len(subs)
     db.session.commit()
 
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
-        student_class_map = {u.username: u.class_name for u in all_students}
-        
-        if assignment.class_name != '全部班级':
-            target_students = [s for s in all_students if s.class_name == assignment.class_name]
-            sub_ids = [s.student_id for s in subs]
-            not_sub = [f"{s.username}-{s.name}" for s in target_students if s.username not in sub_ids]
+    # 使用临时物理文件而不是内存
+    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
+    temp_zip_path = temp_zip.name
+    temp_zip.close()
+
+    try:
+        # 将 ZIP_DEFLATED 改为 ZIP_STORED（极速打包，不进行无用的二次压缩）
+        with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_STORED) as zf:
+            all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
+            student_class_map = {u.username: u.class_name for u in all_students}
             
-            submitted_lines = []
-            for s in subs:
-                sub_time_bj = s.submit_time + timedelta(hours=8)
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], s.file_name)
-                file_exists = os.path.exists(filepath)
+            if assignment.class_name != '全部班级':
+                target_students = [s for s in all_students if s.class_name == assignment.class_name]
+                sub_ids = [s.student_id for s in subs]
+                not_sub = [f"{s.username}-{s.name}" for s in target_students if s.username not in sub_ids]
                 
-                if sub_time_bj > assignment.deadline:
-                    late_tag = " (补交)"
-                elif not file_exists:
-                    late_tag = " (已清理)" if s.is_cleared else " (文件丢失)"
-                else:
-                    late_tag = ""
-                    
-                submitted_lines.append(f"{s.student_id}-{s.student_name}{late_tag}")
-            
-            list_content = f"【{assignment.title}】(目标: {assignment.class_name})\n\n已交名单({len(subs)}人):\n" + "\n".join(submitted_lines)
-            list_content += f"\n\n未交名单({len(not_sub)}人):\n" + "\n".join(not_sub)
-            zf.writestr('名单汇总.txt', list_content.encode('utf-8'))
-            
-            for sub in subs:
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
-                if os.path.exists(filepath):
-                    zf.write(filepath, sub.file_name)
-        else:
-            classes_involved = sorted(list(set([u.class_name for u in all_students if u.class_name])))
-            
-            for cls in classes_involved:
-                cls_students = [s for s in all_students if s.class_name == cls]
-                cls_subs = [s for s in subs if student_class_map.get(s.student_id) == cls]
-                cls_sub_ids = [s.student_id for s in cls_subs]
-                cls_not_sub = [f"{s.username}-{s.name}" for s in cls_students if s.username not in cls_sub_ids]
-                
-                cls_submitted_lines = []
-                for s in cls_subs:
+                submitted_lines = []
+                for s in subs:
                     sub_time_bj = s.submit_time + timedelta(hours=8)
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], s.file_name)
                     file_exists = os.path.exists(filepath)
@@ -1357,24 +1348,70 @@ def download_zip(assignment_id):
                     else:
                         late_tag = ""
                         
-                    cls_submitted_lines.append(f"{s.student_id}-{s.student_name}{late_tag}")
+                    submitted_lines.append(f"{s.student_id}-{s.student_name}{late_tag}")
                 
-                cls_list_content = f"【{assignment.title}】- {cls}班\n\n已交名单({len(cls_subs)}人):\n" + "\n".join(cls_submitted_lines)
-                cls_list_content += f"\n\n未交名单({len(cls_not_sub)}人):\n" + "\n".join(cls_not_sub)
+                list_content = f"【{assignment.title}】(目标: {assignment.class_name})\n\n已交名单({len(subs)}人):\n" + "\n".join(submitted_lines)
+                list_content += f"\n\n未交名单({len(not_sub)}人):\n" + "\n".join(not_sub)
+                zf.writestr('名单汇总.txt', list_content.encode('utf-8'))
                 
-                zf.writestr(f"{cls}/名单汇总_{cls}.txt", cls_list_content.encode('utf-8'))
-                
-                for sub in cls_subs:
+                for sub in subs:
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
                     if os.path.exists(filepath):
-                        zf.write(filepath, f"{cls}/{sub.file_name}")
+                        zf.write(filepath, sub.file_name)
+            else:
+                classes_involved = sorted(list(set([u.class_name for u in all_students if u.class_name])))
                 
-    memory_file.seek(0)
-    
-    safe_class = assignment.class_name.replace('/', '_').replace('\\', '_')
-    safe_title = assignment.title.replace('/', '_').replace('\\', '_')
-    
-    return send_file(memory_file, download_name=f"{safe_class}_{safe_title}_打包.zip", as_attachment=True)
+                for cls in classes_involved:
+                    cls_students = [s for s in all_students if s.class_name == cls]
+                    cls_subs = [s for s in subs if student_class_map.get(s.student_id) == cls]
+                    cls_sub_ids = [s.student_id for s in cls_subs]
+                    cls_not_sub = [f"{s.username}-{s.name}" for s in cls_students if s.username not in cls_sub_ids]
+                    
+                    cls_submitted_lines = []
+                    for s in cls_subs:
+                        sub_time_bj = s.submit_time + timedelta(hours=8)
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], s.file_name)
+                        file_exists = os.path.exists(filepath)
+                        
+                        if sub_time_bj > assignment.deadline:
+                            late_tag = " (补交)"
+                        elif not file_exists:
+                            late_tag = " (已清理)" if s.is_cleared else " (文件丢失)"
+                        else:
+                            late_tag = ""
+                            
+                        cls_submitted_lines.append(f"{s.student_id}-{s.student_name}{late_tag}")
+                    
+                    cls_list_content = f"【{assignment.title}】- {cls}班\n\n已交名单({len(cls_subs)}人):\n" + "\n".join(cls_submitted_lines)
+                    cls_list_content += f"\n\n未交名单({len(cls_not_sub)}人):\n" + "\n".join(cls_not_sub)
+                    
+                    zf.writestr(f"{cls}/名单汇总_{cls}.txt", cls_list_content.encode('utf-8'))
+                    
+                    for sub in cls_subs:
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
+                        if os.path.exists(filepath):
+                            zf.write(filepath, f"{cls}/{sub.file_name}")
+
+        safe_class = assignment.class_name.replace('/', '_').replace('\\', '_')
+        safe_title = assignment.title.replace('/', '_').replace('\\', '_')
+        download_name = f"{safe_class}_{safe_title}_打包.zip"
+        
+        @after_this_request
+        def remove_file(response):
+            try:
+                os.remove(temp_zip_path)
+            except Exception:
+                pass
+            return response
+
+        return send_file(temp_zip_path, as_attachment=True, download_name=download_name)
+
+    except Exception as e:
+        if os.path.exists(temp_zip_path):
+            os.remove(temp_zip_path)
+        flash(f'打包下载失败: {str(e)}', 'error')
+        return redirect(request.referrer or url_for('index'))
+# ==========================================
 
 with app.app_context():
     db.create_all()
