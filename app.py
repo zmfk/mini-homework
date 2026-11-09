@@ -149,8 +149,8 @@ class SystemConfig(db.Model):
 
 class ActionLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.String(50), nullable=False)
-    action = db.Column(db.String(100), nullable=False)
+    student_id = db.Column(db.String(100), nullable=False) # 加长一点以防名字太长
+    action = db.Column(db.String(150), nullable=False) # 加长一点
     ip_address = db.Column(db.String(50))
     user_agent = db.Column(db.String(255))
     time = db.Column(db.DateTime, default=get_bj_time)
@@ -160,12 +160,17 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ==========================================
-# 修复：真实 IP 与极限容错 UA 获取逻辑
+# 修复：真实 IP、极限容错 UA、姓名学号拼接
 # ==========================================
 def log_action(student_id, action, req_obj=None):
     try:
         ip = 'unknown'
         ua = 'unknown'
+        
+        # 自动查询真实姓名
+        user = User.query.filter_by(username=student_id).first()
+        display_name = user.name if user else "未知用户"
+        display_id = f"{student_id} ({display_name})"
         
         if req_obj:
             # 1. 优先从代理头中获取真实公网 IP
@@ -183,7 +188,7 @@ def log_action(student_id, action, req_obj=None):
             if raw_ua and raw_ua != 'None':
                 ua = raw_ua[:250]
 
-        log = ActionLog(student_id=student_id, action=action, ip_address=ip, user_agent=ua)
+        log = ActionLog(student_id=display_id, action=action, ip_address=ip, user_agent=ua)
         db.session.add(log)
         db.session.commit()
     except Exception as e:
@@ -392,7 +397,7 @@ def login():
                     user.known_fingerprints = ','.join(fps[:3])
                     db.session.commit()
             
-            # 新增：记录登录日志
+            # 记录登录日志
             log_action(user.username, "登录了系统", request)
             
             return redirect(url_for('index'))
@@ -1225,8 +1230,8 @@ def student():
             db.session.add(Submission(assignment_id=assignment_id, student_id=current_user.username, student_name=current_user.name, file_name=filename, is_cleared=False))
             db.session.commit()
             
-            # 新增：记录学生提交作业日志
-            log_action(current_user.username, f"提交了作业(ID:{assignment_id})", request)
+            # 记录学生提交作业日志，带作业名
+            log_action(current_user.username, f"提交了《{assignment.title}》 (ID:{assignment_id})", request)
             
             return jsonify({"success": True, "message": "作业提交成功！"})
         else:
@@ -1290,11 +1295,18 @@ def student_delete(assignment_id):
     if current_user.role not in ['student', 'admin']: return "无权限访问", 403
     sub = Submission.query.filter_by(assignment_id=assignment_id, student_id=current_user.username).first()
     if sub:
+        # 获取作业名
+        assignment = Assignment.query.get(assignment_id)
+        title = assignment.title if assignment else "未知作业"
+        
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], sub.file_name)
         if os.path.exists(filepath): os.remove(filepath)
         db.session.delete(sub)
         db.session.commit()
-        log_action(current_user.username, f"撤回了作业(ID:{assignment_id})", request)
+        
+        # 记录撤回日志，带作业名
+        log_action(current_user.username, f"撤回了《{title}》 (ID:{assignment_id})", request)
+        
         flash('提交已撤回，你可以重新上传了。', 'success')
     return redirect(url_for('student'))
 

@@ -68,6 +68,7 @@
                     <div>
                         <h3 class="text-lg font-bold text-gray-900 flex flex-wrap items-center gap-2">
                             {{ a.title }}
+                            <span class="px-1.5 py-0.5 text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200 rounded">ID: {{ a.id }}</span>
                             <span class="px-1.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded">{{ a.class_name }}</span>
                             
                             {% if a.is_active %}
