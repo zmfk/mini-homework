@@ -160,7 +160,7 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ==========================================
-# 修复：真实 IP 获取逻辑
+# 修复：真实 IP 与稳定 UA 获取逻辑
 # ==========================================
 def log_action(student_id, action, req_obj=None):
     try:
@@ -168,12 +168,14 @@ def log_action(student_id, action, req_obj=None):
         ua = 'unknown'
         
         if req_obj:
+            # 1. 优先从代理头中获取真实公网 IP
             x_forwarded_for = req_obj.headers.get('X-Forwarded-For')
             if x_forwarded_for:
                 ip = x_forwarded_for.split(',')[0].strip()
             else:
                 ip = req_obj.remote_addr or 'unknown'
                 
+            # 2. 回退到 user_agent.string，防止代理洗掉 Header
             ua = req_obj.user_agent.string[:250] if req_obj.user_agent else 'unknown'
 
         log = ActionLog(student_id=student_id, action=action, ip_address=ip, user_agent=ua)
@@ -1319,13 +1321,11 @@ def download_zip(assignment_id):
     assignment.last_download_count = len(subs)
     db.session.commit()
 
-    # 使用临时物理文件而不是内存
     temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
     temp_zip_path = temp_zip.name
     temp_zip.close()
 
     try:
-        # 将 ZIP_DEFLATED 改为 ZIP_STORED（极速打包，不进行无用的二次压缩）
         with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_STORED) as zf:
             all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
             student_class_map = {u.username: u.class_name for u in all_students}
