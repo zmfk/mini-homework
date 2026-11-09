@@ -149,8 +149,8 @@ class SystemConfig(db.Model):
 
 class ActionLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.String(100), nullable=False) # 加长一点以防名字太长
-    action = db.Column(db.String(150), nullable=False) # 加长一点
+    student_id = db.Column(db.String(100), nullable=False) 
+    action = db.Column(db.String(150), nullable=False)
     ip_address = db.Column(db.String(50))
     user_agent = db.Column(db.String(255))
     time = db.Column(db.DateTime, default=get_bj_time)
@@ -167,20 +167,17 @@ def log_action(student_id, action, req_obj=None):
         ip = 'unknown'
         ua = 'unknown'
         
-        # 自动查询真实姓名
         user = User.query.filter_by(username=student_id).first()
         display_name = user.name if user else "未知用户"
         display_id = f"{student_id} ({display_name})"
         
         if req_obj:
-            # 1. 优先从代理头中获取真实公网 IP
             x_forwarded_for = req_obj.headers.get('X-Forwarded-For')
             if x_forwarded_for:
                 ip = x_forwarded_for.split(',')[0].strip()
             else:
                 ip = req_obj.remote_addr or 'unknown'
                 
-            # 2. 极限抓取 UA
             raw_ua = req_obj.headers.get('User-Agent')
             if not raw_ua:
                 raw_ua = str(req_obj.user_agent)
@@ -397,8 +394,18 @@ def login():
                     user.known_fingerprints = ','.join(fps[:3])
                     db.session.commit()
             
-            # 记录登录日志
-            log_action(user.username, "登录了系统", request)
+            # ==========================================
+            # 防刷屏加强版：60秒内重复登录不再记录日志
+            # ==========================================
+            recent_log = ActionLog.query.filter(
+                ActionLog.student_id.like(f"{user.username}%"),
+                ActionLog.action == "登录了系统",
+                ActionLog.time >= get_bj_time() - timedelta(seconds=60)
+            ).first()
+            
+            if not recent_log:
+                log_action(user.username, "登录了系统", request)
+            # ==========================================
             
             return redirect(url_for('index'))
         flash('学号或密码错误', 'error')
