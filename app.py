@@ -304,35 +304,41 @@ def lazy_check_reminders():
 
 @app.before_request
 def check_maintenance():
-    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'api_send_email_code', 'api_verify_email_code']
-    if request.endpoint in allowed_endpoints:
-        return
-
-    # 管理员和教师已登录，直接放行
-    if current_user.is_authenticated and current_user.role in ['admin', 'teacher']:
+    # 静态资源直接放行，不消耗性能
+    if request.endpoint == 'static':
         return
 
     try:
         config = SystemConfig.query.first()
+        
+        # 【核心修复 1】：不管是谁（包括管理员），只要发出请求，第一件事就是检查是否过期
         if config and config.is_maintenance:
-            
-            # 自动判断是否过了维护结束时间
             now_bj = get_bj_time()
             if config.end_time and now_bj > config.end_time:
                 config.is_maintenance = False
                 db.session.commit()
-                return
+                # 如果用户此时正在访问维护页，过期后直接帮他跳回正常的首页
+                if request.endpoint == 'maintenance_page':
+                    return redirect(url_for('index'))
 
-            # 还没到结束时间，继续原有的拦截逻辑
+        # 检查白名单
+        allowed_endpoints = ['login', 'logout', 'maintenance_page', 'api_send_email_code', 'api_verify_email_code']
+        if request.endpoint in allowed_endpoints:
+            return
+
+        # 管理员和教师已登录，直接放行
+        if current_user.is_authenticated and current_user.role in ['admin', 'teacher']:
+            return
+
+        # 如果系统依然在维护状态（针对学生）
+        if config and config.is_maintenance:
             if request.endpoint == 'change_password':
                 flash('系统维护中，暂时无法修改密码。', 'error')
                 return redirect(url_for('maintenance_page'))
 
-            # 【修改点】：去掉 flash 提示，直接跳登录页
             if not current_user.is_authenticated:
                 return redirect(url_for('login'))
 
-            # 已登录的学生，根据请求类型拦截
             if request.method == 'POST' or request.path.startswith('/api/'):
                 return jsonify({"error": "maintenance", "message": config.message}), 503
 
@@ -424,7 +430,6 @@ def login():
                     db.session.commit()
                     return redirect(url_for('index'))
                     
-                # 【修改点】：去掉 flash 提示，直接踢到维护页
                 return redirect(url_for('maintenance_page'))
 
             return redirect(url_for('index'))
