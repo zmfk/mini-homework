@@ -391,7 +391,10 @@ def login():
                     fps.insert(0, fp)
                     user.known_fingerprints = ','.join(fps[:3])
                     db.session.commit()
-                    
+            
+            # 新增：记录登录日志
+            log_action(user.username, "登录了系统", request)
+            
             return redirect(url_for('index'))
         flash('学号或密码错误', 'error')
     
@@ -1221,6 +1224,10 @@ def student():
             
             db.session.add(Submission(assignment_id=assignment_id, student_id=current_user.username, student_name=current_user.name, file_name=filename, is_cleared=False))
             db.session.commit()
+            
+            # 新增：记录学生提交作业日志
+            log_action(current_user.username, f"提交了作业(ID:{assignment_id})", request)
+            
             return jsonify({"success": True, "message": "作业提交成功！"})
         else:
             return jsonify({"success": False, "message": "只支持上传 PDF, DOC, DOCX 格式！"}), 400
