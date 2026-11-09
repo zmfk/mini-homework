@@ -328,9 +328,8 @@ def check_maintenance():
                 flash('系统维护中，暂时无法修改密码。', 'error')
                 return redirect(url_for('maintenance_page'))
 
-            # 如果是未登录状态，统统引导去登录页
+            # 【修改点】：去掉 flash 提示，直接跳登录页
             if not current_user.is_authenticated:
-                flash('系统维护中，请先登录管理员/教师账号进行操作。', 'error')
                 return redirect(url_for('login'))
 
             # 已登录的学生，根据请求类型拦截
@@ -419,14 +418,13 @@ def login():
             # 如果当前在维护，且登录的是学生，直接踢到维护页
             config = SystemConfig.query.first()
             if config and config.is_maintenance and user.role == 'student':
-                # 如果已过维护时间，在这里也放行
                 now_bj = get_bj_time()
                 if config.end_time and now_bj > config.end_time:
                     config.is_maintenance = False
                     db.session.commit()
                     return redirect(url_for('index'))
                     
-                flash('系统维护中，暂时禁止学生访问。', 'error')
+                # 【修改点】：去掉 flash 提示，直接踢到维护页
                 return redirect(url_for('maintenance_page'))
 
             return redirect(url_for('index'))
