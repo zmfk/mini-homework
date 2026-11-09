@@ -304,23 +304,36 @@ def lazy_check_reminders():
 
 @app.before_request
 def check_maintenance():
-    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page']
+    allowed_endpoints = ['static', 'login', 'logout', 'maintenance_page', 'api_send_email_code', 'api_verify_email_code']
     if request.endpoint in allowed_endpoints:
         return
 
+    # 管理员和教师已登录，直接放行
     if current_user.is_authenticated and current_user.role in ['admin', 'teacher']:
         return
 
     try:
         config = SystemConfig.query.first()
         if config and config.is_maintenance:
+            
+            # 自动判断是否过了维护结束时间
+            now_bj = get_bj_time()
+            if config.end_time and now_bj > config.end_time:
+                config.is_maintenance = False
+                db.session.commit()
+                return
+
+            # 还没到结束时间，继续原有的拦截逻辑
             if request.endpoint == 'change_password':
                 flash('系统维护中，暂时无法修改密码。', 'error')
                 return redirect(url_for('maintenance_page'))
 
-            if request.endpoint in ['api_send_email_code', 'api_verify_email_code']:
-                return jsonify({"success": False, "message": "系统维护中，暂时无法重置密码，请稍后再试。"}), 503
+            # 如果是未登录状态，统统引导去登录页
+            if not current_user.is_authenticated:
+                flash('系统维护中，请先登录管理员/教师账号进行操作。', 'error')
+                return redirect(url_for('login'))
 
+            # 已登录的学生，根据请求类型拦截
             if request.method == 'POST' or request.path.startswith('/api/'):
                 return jsonify({"error": "maintenance", "message": config.message}), 503
 
@@ -403,6 +416,19 @@ def login():
             if not recent_log:
                 log_action(user.username, "登录了系统", request)
             
+            # 如果当前在维护，且登录的是学生，直接踢到维护页
+            config = SystemConfig.query.first()
+            if config and config.is_maintenance and user.role == 'student':
+                # 如果已过维护时间，在这里也放行
+                now_bj = get_bj_time()
+                if config.end_time and now_bj > config.end_time:
+                    config.is_maintenance = False
+                    db.session.commit()
+                    return redirect(url_for('index'))
+                    
+                flash('系统维护中，暂时禁止学生访问。', 'error')
+                return redirect(url_for('maintenance_page'))
+
             return redirect(url_for('index'))
         flash('学号或密码错误', 'error')
     
@@ -556,10 +582,17 @@ def toggle_maintenance():
         if end_str:
             config.end_time = datetime.strptime(end_str, '%Y-%m-%dT%H:%M')
             
-        config.is_maintenance = not config.is_maintenance
-        db.session.commit()
-        status = "开启" if config.is_maintenance else "关闭"
-        flash(f'系统维护模式已{status}！', 'success')
+        action = request.form.get('action', 'toggle')
+        
+        if action == 'save':
+            db.session.commit()
+            flash('维护设置已保存！(当前维护状态未改变)', 'success')
+        else:
+            config.is_maintenance = not config.is_maintenance
+            db.session.commit()
+            status = "开启" if config.is_maintenance else "关闭"
+            flash(f'系统维护模式已{status}！', 'success')
+            
     return redirect(url_for('admin'))
 
 @app.route('/admin/upload_materials/<int:assignment_id>', methods=['POST'])
@@ -1350,7 +1383,6 @@ def download_zip(assignment_id):
     temp_zip.close()
 
     try:
-        # 【核心修改】：把 ZIP_STORED 改回了 ZIP_DEFLATED，恢复压缩
         with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             all_students = User.query.filter(User.role.in_(['student', 'admin']), User.username != 'admin').all()
             student_class_map = {u.username: u.class_name for u in all_students}

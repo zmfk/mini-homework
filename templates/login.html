@@ -2,6 +2,24 @@
 {% block content %}
 <div class="max-w-md mx-auto mt-20 bg-white p-8 border border-gray-200 shadow-sm rounded-2xl">
     <h2 class="text-2xl font-semibold mb-6 text-center text-gray-900">系统登录</h2>
+    
+    <!-- 维护状态提示框 -->
+    {% if sys_config and sys_config.is_maintenance %}
+    <div class="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+        <div class="flex items-center text-red-700 font-bold mb-2">
+            <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            系统正在维护中
+        </div>
+        <p class="text-sm text-red-600 mb-1">{{ sys_config.message }}</p>
+        {% if sys_config.start_time and sys_config.end_time %}
+        <p class="text-xs text-red-500 font-medium bg-white/50 p-1.5 rounded mt-2">
+            维护时间：{{ sys_config.start_time.strftime('%Y-%m-%d %H:%M') }} 至 {{ sys_config.end_time.strftime('%Y-%m-%d %H:%M') }}
+        </p>
+        {% endif %}
+        <p class="text-[11px] text-red-400 mt-2">* 维护期间仅限管理员和教师登录后台。</p>
+    </div>
+    {% endif %}
+
     <form method="POST" action="/login" class="space-y-4" id="login-form">
         <div>
             <label class="block text-sm text-gray-600 mb-1">学号 / 工号</label>
@@ -52,16 +70,14 @@
 </div>
 
 <script>
-    // 防止表单重复提交的终极防御
     const loginForm = document.getElementById('login-form');
     const submitBtn = document.getElementById('submit-btn');
     
     loginForm.addEventListener('submit', function(e) {
         if (submitBtn.disabled) {
-            e.preventDefault(); // 如果按钮已禁用，阻止提交
+            e.preventDefault(); 
             return;
         }
-        // 禁用按钮并改变样式
         submitBtn.disabled = true;
         submitBtn.textContent = '登录中...';
         submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
